@@ -1,0 +1,40 @@
+use clap::{Args, Parser, Subcommand};
+
+#[derive(Debug,Parser)]
+#[command(name = "mfj", version, about, arg_required_else_help = true)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Debug,Subcommand)]
+pub enum Commands {
+    #[command(arg_required_else_help = true)]
+    Identity(IdentityArgs),
+}
+
+#[derive(Debug,Args)]
+pub struct IdentityArgs {
+    #[command(subcommand)]
+    pub command: IdentityCommand,
+}
+
+#[derive(Debug,Subcommand)]
+pub enum IdentityCommand {
+    Init {
+        #[arg(long, default_value = "default")]
+        name: String,
+    },
+
+    Show {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+
+    List {},
+
+    Remove {
+        #[arg(value_name = "NAME")]
+        name: String,
+    }
+}
