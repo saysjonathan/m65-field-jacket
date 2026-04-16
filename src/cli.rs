@@ -16,11 +16,11 @@ pub enum Commands {
 #[derive(Debug,Args)]
 pub struct IdentityArgs {
     #[command(subcommand)]
-    pub command: IdentityCommand,
+    pub command: IdentityCommands,
 }
 
 #[derive(Debug,Subcommand)]
-pub enum IdentityCommand {
+pub enum IdentityCommands {
     Init {
         #[arg(long, default_value = "default")]
         name: String,
