@@ -3,6 +3,7 @@ use argon2::Argon2;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use crate::cli::{IdentityArgs, IdentityCommands};
+use crate::paths::identities_dir;
 use rand::prelude::*;
 use secrecy::ExposeSecret;
 
@@ -16,12 +17,7 @@ pub fn dispatch(args: IdentityArgs) -> anyhow::Result<()> {
 }
 
 fn init(name: String) -> anyhow::Result<()> {
-    let home = std::env::var("HOME")
-        .context("HOME environment variable not set")?;
-
-    let identities_dir = std::path::Path::new(&home)
-        .join(".m65")
-        .join("identities");
+    let identities_dir = identities_dir()?;
 
     let identity = identities_dir.join(&name);
     let identity_pub = identities_dir.join(format!("{}.pub", &name));
@@ -75,6 +71,14 @@ fn init(name: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn show(name: String) -> anyhow::Result<()> { Ok(()) }
+fn show(name: String) -> anyhow::Result<()> {
+    let identities_dir = identities_dir()?;
+    let identity_pub = identities_dir.join(format!("{}.pub", &name));
+    let pubkey = std::fs::read_to_string(&identity_pub)
+        .map_err(|_| anyhow::anyhow!("identity does not exist: {}", &name))?;
+    println!("{}", pubkey.trim());
+    Ok(())
+}
+
 fn list() -> anyhow::Result<()> { Ok(()) }
 fn remove(name: String) -> anyhow::Result<()> { Ok(()) }

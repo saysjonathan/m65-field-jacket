@@ -32,7 +32,7 @@ pub enum IdentityCommands {
     },
 
     Show {
-        #[arg(value_name = "NAME")]
+        #[arg(value_name = "NAME", default_value = "default")]
         name: String,
     },
 
