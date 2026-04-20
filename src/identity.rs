@@ -80,5 +80,16 @@ fn show(name: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn list() -> anyhow::Result<()> { Ok(()) }
+fn list() -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(identities_dir()?)? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("pub") { continue; }
+        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+            println!("{}", name);
+        }
+    }
+
+    Ok(())
+}
+
 fn remove(name: String) -> anyhow::Result<()> { Ok(()) }
