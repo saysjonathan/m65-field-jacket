@@ -64,4 +64,9 @@ pub enum PocketCommands {
     },
 
     List {},
+
+    Remove {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
 }

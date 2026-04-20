@@ -11,6 +11,7 @@ pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> 
     match args.command {
         PocketCommands::Init { name } => init(name, config),
         PocketCommands::List {} => list(),
+        PocketCommands::Remove { name } => remove(name),
     }
 }
 
@@ -80,6 +81,26 @@ fn list() -> anyhow::Result<()> {
     for entry in std::fs::read_dir(".m65")? {
         println!("{}", entry?.file_name().to_string_lossy());
     }
+
+    Ok(())
+}
+
+fn remove(name: String) -> anyhow::Result<()> {
+    let pocket_dir = pocket_dir(&name)?;
+    if !pocket_dir.exists() {
+        anyhow::bail!("pocket does not exist: {}", name);
+    }
+
+    print!("Type the pocket name to confirm removal: ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    let mut input = String::new();
+    let _ = std::io::stdin().read_line(&mut input);
+    if input.trim() != name {
+        anyhow::bail!("name did not match; aborting");
+    }
+
+    std::fs::remove_dir_all(pocket_dir)?;
+    println!("removed pocket: {}", name);
 
     Ok(())
 }
