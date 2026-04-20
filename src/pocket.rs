@@ -10,6 +10,7 @@ use std::io::Write;
 pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         PocketCommands::Init { name } => init(name, config),
+        PocketCommands::List {} => list(),
     }
 }
 
@@ -71,6 +72,14 @@ fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
     let tmp_dir = pocket_dir.join(".tmp");
     std::fs::create_dir(&tmp_dir)
         .with_context(|| format!("failed to create temp dir {}", tmp_dir.display()))?;
+
+    Ok(())
+}
+
+fn list() -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(".m65")? {
+        println!("{}", entry?.file_name().to_string_lossy());
+    }
 
     Ok(())
 }

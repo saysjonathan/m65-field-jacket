@@ -62,4 +62,6 @@ pub enum PocketCommands {
         #[arg(value_name = "NAME")]
         name: String,
     },
+
+    List {},
 }
