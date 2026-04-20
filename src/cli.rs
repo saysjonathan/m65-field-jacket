@@ -1,44 +1,39 @@
 use clap::{Args, Parser, Subcommand};
 
-#[derive(Debug,Parser)]
-#[command(
-    name = "mfj",
-    version,
-    about,
-    arg_required_else_help = true
-)]
+#[derive(Debug, Parser)]
+#[command(name = "mfj", version, about, arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
 
-#[derive(Debug,Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
     #[command(arg_required_else_help = true)]
     Identity(IdentityArgs),
 }
 
-#[derive(Debug,Args)]
+#[derive(Debug, Args)]
 pub struct IdentityArgs {
     #[command(subcommand)]
     pub command: IdentityCommands,
 }
 
-#[derive(Debug,Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum IdentityCommands {
     Init {
         #[arg(value_name = "NAME", default_value = "default")]
         name: String,
 
         #[arg(short = 'd', long)]
-        set_default: bool
+        set_default: bool,
     },
 
     Default {},
 
     SetDefault {
         #[arg(value_name = "NAME")]
-        name: String
+        name: String,
     },
 
     Show {
@@ -51,5 +46,5 @@ pub enum IdentityCommands {
     Remove {
         #[arg(value_name = "NAME")]
         name: String,
-    }
+    },
 }

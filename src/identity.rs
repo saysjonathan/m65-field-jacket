@@ -1,10 +1,10 @@
-use anyhow::Context;
-use argon2::Argon2;
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use chacha20poly1305::aead::{Aead, KeyInit};
 use crate::cli::{IdentityArgs, IdentityCommands};
 use crate::config::Config;
 use crate::paths::identities_dir;
+use anyhow::Context;
+use argon2::Argon2;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
 use secrecy::ExposeSecret;
 
@@ -25,8 +25,7 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
     let identity = identities_dir.join(&name);
     let identity_pub = identities_dir.join(format!("{}.pub", &name));
 
-    std::fs::create_dir_all(&identities_dir)
-        .context("failed to create ~/.m65/identities")?;
+    std::fs::create_dir_all(&identities_dir).context("failed to create ~/.m65/identities")?;
 
     if std::fs::exists(&identity).context("failed to check identity path")? {
         anyhow::bail!("identity already exists: {}", &name);
@@ -35,8 +34,8 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
     let key = age::x25519::Identity::generate();
     let pubkey = key.to_public();
 
-    let passphrase = rpassword::prompt_password("Passphrase: ")
-        .context("failed to read passphrase")?;
+    let passphrase =
+        rpassword::prompt_password("Passphrase: ").context("failed to read passphrase")?;
     let confirm = rpassword::prompt_password("Confirm passphrase: ")
         .context("failed to read password confirmation")?;
 
@@ -48,7 +47,8 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
     rand::rng().fill_bytes(&mut salt);
 
     let mut hashkey = [0u8; 32];
-    Argon2::default().hash_password_into(passphrase.as_bytes(), &salt, &mut hashkey)
+    Argon2::default()
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut hashkey)
         .map_err(|e| anyhow::anyhow!("argon2 error: {}", e))?;
 
     let key_str = key.to_string();
@@ -56,8 +56,9 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
 
     let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
     let nonce_bytes: [u8; 12] = rand::rng().random();
-    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
-      .map_err(|e| anyhow::anyhow!("encryption failed: {}", e))?;
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+        .map_err(|e| anyhow::anyhow!("encryption failed: {}", e))?;
 
     let mut blob = Vec::new();
     blob.extend_from_slice(&salt);
@@ -86,7 +87,9 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
 }
 
 fn default(config: Option<Config>) -> anyhow::Result<()> {
-    let c = config.ok_or_else(|| anyhow::anyhow!("No identity initialized. Run 'mfj identity init' to create one."))?;
+    let c = config.ok_or_else(|| {
+        anyhow::anyhow!("No identity initialized. Run 'mfj identity init' to create one.")
+    })?;
     println!("{}", c.default_identity);
     Ok(())
 }
@@ -101,7 +104,9 @@ fn set_default(name: String, config: Option<Config>) -> anyhow::Result<()> {
             c.default_identity = name;
             c.save()?
         }
-        None => { anyhow::bail!("No config found. Run 'mfj identity init' first.") }
+        None => {
+            anyhow::bail!("No config found. Run 'mfj identity init' first.")
+        }
     }
 
     Ok(())
@@ -120,9 +125,15 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
     let default = config.map(|c| c.default_identity);
     for entry in std::fs::read_dir(identities_dir()?)? {
         let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("pub") { continue; }
+        if path.extension().and_then(|e| e.to_str()) != Some("pub") {
+            continue;
+        }
         if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-            let marker = if default.as_deref() == Some(name) {"* " } else {" "};
+            let marker = if default.as_deref() == Some(name) {
+                "* "
+            } else {
+                " "
+            };
             println!("{}{}", marker, name);
         }
     }
@@ -133,7 +144,10 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
 fn remove(name: String, config: Option<Config>) -> anyhow::Result<()> {
     if let Some(c) = config {
         if c.default_identity == name {
-            anyhow::bail!("cannot remove default identity '{}'; set a different default first", name);
+            anyhow::bail!(
+                "cannot remove default identity '{}'; set a different default first",
+                name
+            );
         }
     }
 
