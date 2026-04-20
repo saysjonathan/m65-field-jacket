@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod identity;
 mod paths;
 
@@ -14,9 +15,10 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
+    let config = config::Config::load()?;
 
     match cli.command {
-        cli::Commands::Identity(args) => identity::dispatch(args)?,
+        cli::Commands::Identity(args) => identity::dispatch(args, config)?,
     }
 
     Ok(())

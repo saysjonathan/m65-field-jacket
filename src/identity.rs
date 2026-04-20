@@ -3,20 +3,23 @@ use argon2::Argon2;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use crate::cli::{IdentityArgs, IdentityCommands};
+use crate::config::Config;
 use crate::paths::identities_dir;
 use rand::prelude::*;
 use secrecy::ExposeSecret;
 
-pub fn dispatch(args: IdentityArgs) -> anyhow::Result<()> {
+pub fn dispatch(args: IdentityArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
-        IdentityCommands::Init { name } => init(name),
+        IdentityCommands::Init { name, set_default } => init(name, set_default, config),
+        IdentityCommands::Default {} => default(config),
+        IdentityCommands::SetDefault { name } => set_default(name, config),
         IdentityCommands::Show { name } => show(name),
-        IdentityCommands::List {} => list(),
+        IdentityCommands::List {} => list(config),
         IdentityCommands::Remove { name } => remove(name),
     }
 }
 
-fn init(name: String) -> anyhow::Result<()> {
+fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Result<()> {
     let identities_dir = identities_dir()?;
 
     let identity = identities_dir.join(&name);
@@ -31,7 +34,6 @@ fn init(name: String) -> anyhow::Result<()> {
 
     let key = age::x25519::Identity::generate();
     let pubkey = key.to_public();
-
 
     let passphrase = rpassword::prompt_password("Passphrase: ")
         .context("failed to read passphrase")?;
@@ -52,10 +54,9 @@ fn init(name: String) -> anyhow::Result<()> {
     let key_str = key.to_string();
     let plaintext = key_str.expose_secret().as_bytes();
 
-
-   let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
-   let nonce_bytes: [u8; 12] = rand::rng().random();
-   let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
+    let nonce_bytes: [u8; 12] = rand::rng().random();
+    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
       .map_err(|e| anyhow::anyhow!("encryption failed: {}", e))?;
 
     let mut blob = Vec::new();
@@ -66,7 +67,42 @@ fn init(name: String) -> anyhow::Result<()> {
     std::fs::write(&identity, &blob)?;
     std::fs::write(&identity_pub, &pubkey.to_string())?;
 
+    match config {
+        Some(mut c) => {
+            if set_default {
+                c.default_identity = name;
+                c.save()?
+            }
+        }
+        None => {
+            let c = Config::new(name);
+            c.save()?
+        }
+    }
+
     println!("{}", pubkey);
+
+    Ok(())
+}
+
+fn default(config: Option<Config>) -> anyhow::Result<()> {
+    let c = config.ok_or_else(|| anyhow::anyhow!("No identity initialized. Run 'mfj identity init' to create one."))?;
+    println!("{}", c.default_identity);
+    Ok(())
+}
+
+fn set_default(name: String, config: Option<Config>) -> anyhow::Result<()> {
+    match config {
+        Some(mut c) => {
+            if !identities_dir()?.join(&name).exists() {
+                anyhow::bail!("identity does not exist: {}", name);
+            }
+
+            c.default_identity = name;
+            c.save()?
+        }
+        None => { anyhow::bail!("No config found. Run 'mfj identity init' first.") }
+    }
 
     Ok(())
 }
@@ -80,12 +116,14 @@ fn show(name: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn list() -> anyhow::Result<()> {
+fn list(config: Option<Config>) -> anyhow::Result<()> {
+    let default = config.map(|c| c.default_identity);
     for entry in std::fs::read_dir(identities_dir()?)? {
         let path = entry?.path();
         if path.extension().and_then(|e| e.to_str()) != Some("pub") { continue; }
         if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-            println!("{}", name);
+            let marker = if default.as_deref() == Some(name) {"* " } else {" "};
+            println!("{}{}", marker, name);
         }
     }
 

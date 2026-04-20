@@ -775,6 +775,8 @@ dependencies = [
  "rand 0.10.1",
  "rpassword",
  "secrecy",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

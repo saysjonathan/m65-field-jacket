@@ -27,8 +27,18 @@ pub struct IdentityArgs {
 #[derive(Debug,Subcommand)]
 pub enum IdentityCommands {
     Init {
-        #[arg(long, default_value = "default")]
+        #[arg(short, long, default_value = "default")]
         name: String,
+
+        #[arg(short = 'd', long)]
+        set_default: bool
+    },
+
+    Default {},
+
+    SetDefault {
+        #[arg(value_name = "NAME")]
+        name: String
     },
 
     Show {
