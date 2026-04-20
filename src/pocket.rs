@@ -1,0 +1,76 @@
+use crate::cli::{PocketArgs, PocketCommands};
+use crate::config::Config;
+use crate::paths::{identities_dir, pocket_dir};
+use crate::stanza;
+use age_core::format::Stanza;
+use anyhow::Context;
+use rand::prelude::*;
+use std::io::Write;
+
+pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
+    match args.command {
+        PocketCommands::Init { name } => init(name, config),
+    }
+}
+
+fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        anyhow::bail!("pocket name must be alphanumeric");
+    }
+
+    if name.len() > 64 {
+        anyhow::bail!("pocket name must be <=64 chars");
+    }
+
+    let c = config.ok_or_else(|| {
+        anyhow::anyhow!("No identity initialized. Run `mfj identity init` to create one.")
+    })?;
+
+    let pubkey_path = identities_dir()?.join(format!("{}.pub", c.default_identity));
+    let pubkey = std::fs::read_to_string(&pubkey_path)
+        .with_context(|| format!("identity not found: {}", c.default_identity));
+    let recipient: age::x25519::Recipient = pubkey?
+        .trim()
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid public key: {e}"))?;
+
+    let mut dek = [0u8; 32];
+    rand::rng().fill_bytes(&mut dek);
+
+    let metadata = stanza::MfjMetadata(vec![Stanza {
+        tag: "mfj-version".to_owned(),
+        args: vec!["1".to_owned()],
+        body: vec![],
+    }]);
+
+    let encryptor = age::Encryptor::with_recipients(
+        [
+            &metadata as &dyn age::Recipient,
+            &recipient as &dyn age::Recipient,
+        ]
+        .into_iter(),
+    )?;
+
+    let mut keyring = Vec::new();
+    let mut w = encryptor.wrap_output(&mut keyring)?;
+    w.write_all(&dek)?;
+    w.finish()?;
+
+    let pocket_dir = pocket_dir(&name)?;
+    if pocket_dir.exists() {
+        anyhow::bail!("pocket already exists: {}", name);
+    }
+    std::fs::create_dir_all(&pocket_dir)
+        .with_context(|| format!("failed to create {}", pocket_dir.display()))?;
+
+    std::fs::write(pocket_dir.join("keyring"), &keyring)?;
+
+    let tmp_dir = pocket_dir.join(".tmp");
+    std::fs::create_dir(&tmp_dir)
+        .with_context(|| format!("failed to create temp dir {}", tmp_dir.display()))?;
+
+    Ok(())
+}

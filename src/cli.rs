@@ -11,6 +11,7 @@ pub struct Cli {
 pub enum Commands {
     #[command(arg_required_else_help = true)]
     Identity(IdentityArgs),
+    Pocket(PocketArgs),
 }
 
 #[derive(Debug, Args)]
@@ -44,6 +45,20 @@ pub enum IdentityCommands {
     List {},
 
     Remove {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct PocketArgs {
+    #[command(subcommand)]
+    pub command: PocketCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PocketCommands {
+    Init {
         #[arg(value_name = "NAME")]
         name: String,
     },
