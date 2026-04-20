@@ -15,7 +15,7 @@ pub fn dispatch(args: IdentityArgs, config: Option<Config>) -> anyhow::Result<()
         IdentityCommands::SetDefault { name } => set_default(name, config),
         IdentityCommands::Show { name } => show(name),
         IdentityCommands::List {} => list(config),
-        IdentityCommands::Remove { name } => remove(name),
+        IdentityCommands::Remove { name } => remove(name, config),
     }
 }
 
@@ -130,4 +130,25 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: String) -> anyhow::Result<()> { Ok(()) }
+fn remove(name: String, config: Option<Config>) -> anyhow::Result<()> {
+    if let Some(c) = config {
+        if c.default_identity == name {
+            anyhow::bail!("cannot remove default identity '{}'; set a different default first", name);
+        }
+    }
+
+    print!("Type the identity name to confirm removal: ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    let mut input = String::new();
+    let _ = std::io::stdin().read_line(&mut input);
+    if input.trim() != name {
+        anyhow::bail!("name did not match; aborting");
+    }
+
+    let dir = identities_dir()?;
+    std::fs::remove_file(dir.join(&name))?;
+    std::fs::remove_file(dir.join(format!("{name}.pub")))?;
+    println!("removed identity: {}", name);
+
+    Ok(())
+}
