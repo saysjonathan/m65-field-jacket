@@ -10,8 +10,7 @@ use secrecy::ExposeSecret;
 
 pub fn decrypt_identity(name: &str) -> anyhow::Result<age::x25519::Identity> {
     let identity = identities_dir()?.join(name);
-    let blob = std::fs::read(&identity)
-        .with_context(|| format!("identity not found: {}", name))?;
+    let blob = std::fs::read(&identity).with_context(|| format!("identity not found: {}", name))?;
     let salt = &blob[0..16];
     let nonce = &blob[16..28];
     let ciphertext = &blob[28..];
@@ -30,7 +29,8 @@ pub fn decrypt_identity(name: &str) -> anyhow::Result<age::x25519::Identity> {
         .map_err(|_| anyhow::anyhow!("decryption failed (wrong passphrase?)"))?;
 
     let key_str = std::str::from_utf8(&plaintext).context("decrypted key not valid UTF-8")?;
-    key_str.parse::<age::x25519::Identity>()
+    key_str
+        .parse::<age::x25519::Identity>()
         .map_err(|e| anyhow::anyhow!("invalid age private key: {e}"))
 }
 

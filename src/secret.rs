@@ -22,7 +22,8 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
         let secret = std::fs::File::open(&path)?;
         let stanzas = read_stanzas(std::io::BufReader::new(secret))?;
 
-        let map: std::collections::HashMap<&str, &str> = stanzas.iter()
+        let map: std::collections::HashMap<&str, &str> = stanzas
+            .iter()
             .filter_map(|s| Some((s.tag.as_str(), s.args.first()?.as_str())))
             .collect();
         let name = map.get("mfj-name").copied().unwrap_or("?");
@@ -31,7 +32,7 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
 
         match target {
             Some(t) => println!("{name}\t{kind}\t{t}"),
-            None => println!("{name}\t{kind}")
+            None => println!("{name}\t{kind}"),
         }
     }
 
