@@ -23,6 +23,12 @@ impl Config {
         }
     }
 
+    pub fn require(config: Option<Self>) -> anyhow::Result<Self> {
+        config.ok_or_else(|| {
+            anyhow::anyhow!("no identity initialized. Run `mfj identity init` to create one")
+        })
+    }
+
     pub fn load() -> anyhow::Result<Option<Self>> {
         let path = m65_dir()?.join("config");
         if !path.exists() {

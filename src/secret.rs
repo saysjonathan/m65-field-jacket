@@ -40,9 +40,7 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
 }
 
 pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Result<()> {
-    let c = config.ok_or_else(|| {
-        anyhow::anyhow!("no identity initialized. Run `mfj identity init` to create one.")
-    })?;
+    let c = Config::require(config)?;
 
     let pocket_dir = pocket_dir(&pocket)?;
     if !pocket_dir.exists() {
@@ -123,9 +121,7 @@ pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
 }
 
 fn env(pocket: String, name: String, value: String, config: Option<Config>) -> anyhow::Result<()> {
-    let c = config.ok_or_else(|| {
-        anyhow::anyhow!("no identity initialized. Run `mfj identity init` to create one.")
-    })?;
+    let c = Config::require(config)?;
 
     let pocket_dir = pocket_dir(&pocket)?;
     if !pocket_dir.exists() {

@@ -113,28 +113,18 @@ fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Resu
 }
 
 fn default(config: Option<Config>) -> anyhow::Result<()> {
-    let c = config.ok_or_else(|| {
-        anyhow::anyhow!("No identity initialized. Run 'mfj identity init' to create one.")
-    })?;
+    let c = Config::require(config)?;
     println!("{}", c.default_identity);
     Ok(())
 }
 
 fn set_default(name: String, config: Option<Config>) -> anyhow::Result<()> {
-    match config {
-        Some(mut c) => {
-            if !identities_dir()?.join(&name).exists() {
-                anyhow::bail!("identity does not exist: {}", name);
-            }
-
-            c.default_identity = name;
-            c.save()?
-        }
-        None => {
-            anyhow::bail!("No config found. Run 'mfj identity init' first.")
-        }
+    let mut c = Config::require(config)?;
+    if !identities_dir()?.join(&name).exists() {
+        anyhow::bail!("identity does not exist: {}", name);
     }
-
+    c.default_identity = name;
+    c.save()?;
     Ok(())
 }
 
@@ -148,14 +138,14 @@ fn show(name: String) -> anyhow::Result<()> {
 }
 
 fn list(config: Option<Config>) -> anyhow::Result<()> {
-    let default = config.map(|c| c.default_identity);
+    let c = Config::require(config)?;
     for entry in std::fs::read_dir(identities_dir()?)? {
         let path = entry?.path();
         if path.extension().and_then(|e| e.to_str()) != Some("pub") {
             continue;
         }
         if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-            let marker = if default.as_deref() == Some(name) {
+            let marker = if c.default_identity == name {
                 "* "
             } else {
                 " "
@@ -168,13 +158,12 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
 }
 
 fn remove(name: String, config: Option<Config>) -> anyhow::Result<()> {
-    if let Some(c) = config {
-        if c.default_identity == name {
-            anyhow::bail!(
-                "cannot remove default identity '{}'; set a different default first",
-                name
-            );
-        }
+    let c = Config::require(config)?;
+    if c.default_identity == name {
+        anyhow::bail!(
+            "cannot remove default identity '{}'; set a different default first",
+            name
+        );
     }
 
     print!("Type the identity name to confirm removal: ");

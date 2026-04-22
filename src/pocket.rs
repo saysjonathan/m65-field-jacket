@@ -27,9 +27,7 @@ fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
         anyhow::bail!("pocket name must be <=64 chars");
     }
 
-    let c = config.ok_or_else(|| {
-        anyhow::anyhow!("No identity initialized. Run `mfj identity init` to create one.")
-    })?;
+    let c = Config::require(config)?;
 
     let pubkey_path = identities_dir()?.join(format!("{}.pub", c.default_identity));
     let pubkey = std::fs::read_to_string(&pubkey_path)
