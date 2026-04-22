@@ -31,7 +31,7 @@ pub fn read_stanzas(r: impl BufRead) -> anyhow::Result<Vec<Stanza>> {
             break;
         }
         if let Some(rest) = line.strip_prefix("-> ") {
-            let mut parts = rest.split(' ');
+            let mut parts = rest.split(": ");
             let tag = parts.next().unwrap_or("").to_owned();
             if tag.starts_with("mfj-") {
                 out.push(Stanza {

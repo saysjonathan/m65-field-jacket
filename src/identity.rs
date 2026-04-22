@@ -8,6 +8,32 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
 use secrecy::ExposeSecret;
 
+pub fn decrypt_identity(name: &str) -> anyhow::Result<age::x25519::Identity> {
+    let identity = identities_dir()?.join(name);
+    let blob = std::fs::read(&identity)
+        .with_context(|| format!("identity not found: {}", name))?;
+    let salt = &blob[0..16];
+    let nonce = &blob[16..28];
+    let ciphertext = &blob[28..];
+
+    let passphrase =
+        rpassword::prompt_password("Passphrase: ").context("failed to read passphrase")?;
+
+    let mut hashkey = [0u8; 32];
+    Argon2::default()
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut hashkey)
+        .map_err(|e| anyhow::anyhow!("argon2 error: {}", e))?;
+
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(nonce), ciphertext)
+        .map_err(|_| anyhow::anyhow!("decryption failed (wrong passphrase?)"))?;
+
+    let key_str = std::str::from_utf8(&plaintext).context("decrypted key not valid UTF-8")?;
+    key_str.parse::<age::x25519::Identity>()
+        .map_err(|e| anyhow::anyhow!("invalid age private key: {e}"))
+}
+
 pub fn dispatch(args: IdentityArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         IdentityCommands::Init { name, set_default } => init(name, set_default, config),

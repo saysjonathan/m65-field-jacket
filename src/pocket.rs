@@ -15,6 +15,7 @@ pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> 
     }
 }
 
+
 fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
     if !name
         .chars()

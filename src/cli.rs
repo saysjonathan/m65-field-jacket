@@ -12,6 +12,7 @@ pub enum Commands {
     #[command(arg_required_else_help = true)]
     Identity(IdentityArgs),
     Pocket(PocketArgs),
+    Set(SetArgs),
 }
 
 #[derive(Debug, Args)]
@@ -68,5 +69,26 @@ pub enum PocketCommands {
     Remove {
         #[arg(value_name = "NAME")]
         name: String,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct SetArgs {
+    #[command(subcommand)]
+    pub command: SetCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SetCommands {
+    Env {
+        pocket: String,
+        name: String,
+        value: String
+    },
+
+    File {
+        pocket: String,
+        source: String,
+        target: Option<String>,
     },
 }

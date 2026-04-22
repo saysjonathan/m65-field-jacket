@@ -3,9 +3,10 @@ mod config;
 mod identity;
 mod paths;
 mod pocket;
+mod secret;
 mod stanza;
 
-use crate::cli::Commands::{Identity, Pocket};
+use crate::cli::Commands::{Identity, Pocket, Set};
 use anyhow;
 use clap::Parser;
 
@@ -23,6 +24,7 @@ fn run() -> anyhow::Result<()> {
     match cli.command {
         Identity(args) => identity::dispatch(args, config)?,
         Pocket(args) => pocket::dispatch(args, config)?,
+        Set(args) => secret::set(args, config)?,
     }
 
     Ok(())
