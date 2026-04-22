@@ -1,8 +1,6 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
-use crate::identity::decrypt_identity;
-use crate::paths::pocket_dir;
-use crate::pocket::validate_pocket;
+use crate::pocket::{decrypt_dek, validate_pocket};
 use crate::stanza::read_stanzas;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
@@ -40,19 +38,7 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
 pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
     let pocket_dir = validate_pocket(&pocket)?;
-
-    let keyring = pocket_dir.join("keyring");
-    if !keyring.exists() {
-        anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
-    }
-
-    let identity = decrypt_identity(&c.default_identity)?;
-    let keyring_bytes = std::fs::read(&keyring)?;
-    let decryptor = age::Decryptor::new(&keyring_bytes[..])?;
-    let mut dek = Vec::new();
-    let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
-    std::io::Read::read_to_end(&mut reader, &mut dek)?;
-    anyhow::ensure!(dek.len() == 32, "DEK is not 32 bytes");
+    let dek = decrypt_dek(&pocket_dir, &c)?;
 
     let enc_file = pocket_dir.join(format!("{}.enc", name));
     if !enc_file.try_exists()? {
@@ -108,25 +94,13 @@ pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
 fn env(pocket: String, name: String, value: String, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
     let pocket_dir = validate_pocket(&pocket)?;
-
-    let keyring = pocket_dir.join("keyring");
-    if !keyring.exists() {
-        anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
-    }
+    let dek = decrypt_dek(&pocket_dir, &c)?;
 
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         || name.starts_with(|c: char| c.is_ascii_digit())
     {
         anyhow::bail!("secret name must match [a-zA-Z_][a-zA-Z0-9_]*");
     }
-
-    let identity = decrypt_identity(&c.default_identity)?;
-    let keyring_bytes = std::fs::read(&keyring)?;
-    let decryptor = age::Decryptor::new(&keyring_bytes[..])?;
-    let mut dek = Vec::new();
-    let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
-    std::io::Read::read_to_end(&mut reader, &mut dek)?;
-    anyhow::ensure!(dek.len() == 32, "DEK is not 32 bytes");
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?

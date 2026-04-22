@@ -1,12 +1,13 @@
 use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
+use crate::identity::decrypt_identity;
 use crate::paths::{identities_dir, pocket_dir};
 use crate::stanza;
 use age_core::format::Stanza;
 use anyhow::Context;
 use rand::prelude::*;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
@@ -25,6 +26,17 @@ pub fn validate_pocket(pocket: &str) -> anyhow::Result<PathBuf> {
             pocket
         ),
     }
+}
+
+pub fn decrypt_dek(pocket_dir: &Path, config: &Config) -> anyhow::Result<[u8; 32]> {
+    let id = decrypt_identity(&config.default_identity)?;
+    let keyring_bytes = std::fs::read(pocket_dir.join("keyring"))?;
+    let decryptor = age::Decryptor::new(&keyring_bytes[..])?;
+    let mut dek = Vec::new();
+    let mut reader = decryptor.decrypt(std::iter::once(&id as &dyn age::Identity))?;
+    std::io::Read::read_to_end(&mut reader, &mut dek)?;
+    dek.try_into()
+        .map_err(|_| anyhow::anyhow!("DEK is not 32 bytes"))
 }
 
 fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
