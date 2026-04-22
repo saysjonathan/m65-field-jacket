@@ -1,15 +1,55 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
-use crate::paths::pocket_dir;
 use crate::identity::decrypt_identity;
+use crate::paths::pocket_dir;
+use crate::stanza::read_stanzas;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
 
+pub fn list(pocket: String) -> anyhow::Result<()> {
+    let pocket_dir = pocket_dir(&pocket)?;
+    if !pocket_dir.try_exists()? {
+        anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
+    }
+
+    for entry in std::fs::read_dir(&pocket_dir)? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("enc") {
+            continue;
+        }
+
+        let secret = std::fs::File::open(&path)?;
+        let stanzas = read_stanzas(std::io::BufReader::new(secret))?;
+
+        let map: std::collections::HashMap<&str, &str> = stanzas.iter()
+            .filter_map(|s| Some((s.tag.as_str(), s.args.first()?.as_str())))
+            .collect();
+        let name = map.get("mfj-name").copied().unwrap_or("?");
+        let kind = map.get("mfj-type").copied().unwrap_or("?");
+        let target = map.get("mfj-target").copied();
+
+        match target {
+            Some(t) => println!("{name}\t{kind}\t{t}"),
+            None => println!("{name}\t{kind}")
+        }
+    }
+
+    Ok(())
+}
+
 pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
-        SetCommands::Env { pocket, name, value } => env(pocket, name, value, config),
-        SetCommands::File { pocket, source, target } => file(pocket, source, target, config),
+        SetCommands::Env {
+            pocket,
+            name,
+            value,
+        } => env(pocket, name, value, config),
+        SetCommands::File {
+            pocket,
+            source,
+            target,
+        } => file(pocket, source, target, config),
     }
 }
 
@@ -19,16 +59,21 @@ fn env(pocket: String, name: String, value: String, config: Option<Config>) -> a
     })?;
 
     let pocket_dir = pocket_dir(&pocket)?;
-    if ! pocket_dir.exists() {
-        anyhow::bail!("pocket '{}' not initialized. run `mfj pocket init` to create a pocket", pocket);
+    if !pocket_dir.exists() {
+        anyhow::bail!(
+            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
+            pocket
+        );
     }
 
     let keyring = pocket_dir.join("keyring");
-    if ! keyring.exists() {
+    if !keyring.exists() {
         anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
     }
 
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || name.starts_with(|c: char| c.is_ascii_digit()) {
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        || name.starts_with(|c: char| c.is_ascii_digit())
+    {
         anyhow::bail!("secret name must match [a-zA-Z_][a-zA-Z0-9_]*");
     }
 
@@ -68,6 +113,11 @@ fn env(pocket: String, name: String, value: String, config: Option<Config>) -> a
     Ok(())
 }
 
-fn file(pocket: String, source: String, target: Option<String>, config: Option<Config>) -> anyhow::Result<()> {
+fn file(
+    pocket: String,
+    source: String,
+    target: Option<String>,
+    config: Option<Config>,
+) -> anyhow::Result<()> {
     Ok(())
 }

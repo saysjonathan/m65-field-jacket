@@ -13,6 +13,9 @@ pub enum Commands {
     Identity(IdentityArgs),
     Pocket(PocketArgs),
     Set(SetArgs),
+    List {
+        pocket: String,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -83,7 +86,7 @@ pub enum SetCommands {
     Env {
         pocket: String,
         name: String,
-        value: String
+        value: String,
     },
 
     File {
