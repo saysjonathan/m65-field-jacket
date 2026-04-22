@@ -39,6 +39,55 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Result<()> {
+    let c = config.ok_or_else(|| {
+        anyhow::anyhow!("no identity initialized. Run `mfj identity init` to create one.")
+    })?;
+
+    let pocket_dir = pocket_dir(&pocket)?;
+    if !pocket_dir.exists() {
+        anyhow::bail!(
+            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
+            pocket
+        );
+    }
+
+    let keyring = pocket_dir.join("keyring");
+    if !keyring.exists() {
+        anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
+    }
+
+    let identity = decrypt_identity(&c.default_identity)?;
+    let keyring_bytes = std::fs::read(&keyring)?;
+    let decryptor = age::Decryptor::new(&keyring_bytes[..])?;
+    let mut dek = Vec::new();
+    let mut reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
+    std::io::Read::read_to_end(&mut reader, &mut dek)?;
+    anyhow::ensure!(dek.len() == 32, "DEK is not 32 bytes");
+
+    let enc_file = pocket_dir.join(format!("{}.enc", name));
+    if !enc_file.try_exists()? {
+        anyhow::bail!("secret does not exist: {}", name);
+    }
+
+    let secret = std::fs::read(&enc_file)?;
+    let sep = b"---\n";
+    let sep_pos = secret
+        .windows(4)
+        .position(|w| w == sep)
+        .ok_or_else(|| anyhow::anyhow!("malformed .enc file: missing separator"))?;
+    let blob = &secret[sep_pos + 4..];
+
+    let (nonce_bytes, ciphertext) = blob.split_at(12);
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&dek));
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+        .map_err(|_| anyhow::anyhow!("decryption failed: wrong key or corrupted data"))?;
+    println!("{}", String::from_utf8(plaintext)?);
+
+    Ok(())
+}
+
 pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         SetCommands::Env {

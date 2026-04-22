@@ -16,6 +16,10 @@ pub enum Commands {
     List {
         pocket: String,
     },
+    Get {
+        pocket: String,
+        name: String,
+    },
 }
 
 #[derive(Debug, Args)]
