@@ -2,16 +2,14 @@ use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
 use crate::identity::decrypt_identity;
 use crate::paths::pocket_dir;
+use crate::pocket::validate_pocket;
 use crate::stanza::read_stanzas;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
 
 pub fn list(pocket: String) -> anyhow::Result<()> {
-    let pocket_dir = pocket_dir(&pocket)?;
-    if !pocket_dir.try_exists()? {
-        anyhow::bail!("keyring for pocket '{}' does not exist", pocket);
-    }
+    let pocket_dir = validate_pocket(&pocket)?;
 
     for entry in std::fs::read_dir(&pocket_dir)? {
         let path = entry?.path();
@@ -41,14 +39,7 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
 
 pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
-
-    let pocket_dir = pocket_dir(&pocket)?;
-    if !pocket_dir.exists() {
-        anyhow::bail!(
-            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
-            pocket
-        );
-    }
+    let pocket_dir = validate_pocket(&pocket)?;
 
     let keyring = pocket_dir.join("keyring");
     if !keyring.exists() {
@@ -87,13 +78,7 @@ pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Resu
 }
 
 pub fn remove(pocket: String, name: String) -> anyhow::Result<()> {
-    let pocket_dir = pocket_dir(&pocket)?;
-    if !pocket_dir.exists() {
-        anyhow::bail!(
-            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
-            pocket
-        );
-    }
+    let pocket_dir = validate_pocket(&pocket)?;
 
     let secret = pocket_dir.join(format!("{}.enc", &name));
     if !secret.try_exists()? {
@@ -122,14 +107,7 @@ pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
 
 fn env(pocket: String, name: String, value: String, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
-
-    let pocket_dir = pocket_dir(&pocket)?;
-    if !pocket_dir.exists() {
-        anyhow::bail!(
-            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
-            pocket
-        );
-    }
+    let pocket_dir = validate_pocket(&pocket)?;
 
     let keyring = pocket_dir.join("keyring");
     if !keyring.exists() {

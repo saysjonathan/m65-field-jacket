@@ -6,12 +6,24 @@ use age_core::format::Stanza;
 use anyhow::Context;
 use rand::prelude::*;
 use std::io::Write;
+use std::path::PathBuf;
 
 pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         PocketCommands::Init { name } => init(name, config),
         PocketCommands::List {} => list(),
         PocketCommands::Remove { name } => remove(name),
+    }
+}
+
+pub fn validate_pocket(pocket: &str) -> anyhow::Result<PathBuf> {
+    let pocket_dir = pocket_dir(pocket)?;
+    match pocket_dir.exists() {
+        true => Ok(pocket_dir),
+        false => anyhow::bail!(
+            "pocket not initialized: {}. run `mfj pocket init` to create",
+            pocket
+        ),
     }
 }
 
@@ -84,10 +96,7 @@ fn list() -> anyhow::Result<()> {
 }
 
 fn remove(name: String) -> anyhow::Result<()> {
-    let pocket_dir = pocket_dir(&name)?;
-    if !pocket_dir.exists() {
-        anyhow::bail!("pocket does not exist: {}", name);
-    }
+    let pocket_dir = validate_pocket(&name)?;
 
     print!("Type the pocket name to confirm removal: ");
     std::io::Write::flush(&mut std::io::stdout())?;
