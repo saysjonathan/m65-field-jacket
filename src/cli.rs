@@ -20,6 +20,10 @@ pub enum Commands {
         pocket: String,
         name: String,
     },
+    Remove {
+        pocket: String,
+        name: String,
+    },
 }
 
 #[derive(Debug, Args)]

@@ -6,7 +6,7 @@ mod pocket;
 mod secret;
 mod stanza;
 
-use crate::cli::Commands::{Get, Identity, List, Pocket, Set};
+use crate::cli::Commands::{Get, Identity, List, Pocket, Remove, Set};
 use anyhow;
 use clap::Parser;
 
@@ -25,6 +25,7 @@ fn run() -> anyhow::Result<()> {
         Identity(args) => identity::dispatch(args, config)?,
         Pocket(args) => pocket::dispatch(args, config)?,
         Get { pocket, name } => secret::get(pocket, name, config)?,
+        Remove { pocket, name } => secret::remove(pocket, name)?,
         Set(args) => secret::set(args, config)?,
         List { pocket } => secret::list(pocket)?,
     }

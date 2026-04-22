@@ -88,6 +88,25 @@ pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Resu
     Ok(())
 }
 
+pub fn remove(pocket: String, name: String) -> anyhow::Result<()> {
+    let pocket_dir = pocket_dir(&pocket)?;
+    if !pocket_dir.exists() {
+        anyhow::bail!(
+            "pocket '{}' not initialized. run `mfj pocket init` to create a pocket",
+            pocket
+        );
+    }
+
+    let secret = pocket_dir.join(format!("{}.enc", &name));
+    if !secret.try_exists()? {
+        anyhow::bail!("secret does not exist: {}", name);
+    }
+
+    std::fs::remove_file(secret)?;
+
+    Ok(())
+}
+
 pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         SetCommands::Env {
