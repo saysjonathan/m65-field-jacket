@@ -39,7 +39,7 @@ impl std::fmt::Display for SecretKind {
 pub struct SecretMeta {
     pub name: String,
     pub kind: SecretKind,
-    pub created: Option<u64>,
+    pub created: u64,
 }
 
 impl SecretMeta {
@@ -62,6 +62,7 @@ impl SecretMeta {
 
         let name = name.ok_or_else(|| anyhow::anyhow!("missing mfj-name stanza"))?;
         let type_str = type_str.ok_or_else(|| anyhow::anyhow!("missing mfj-type stanza"))?;
+        let created = created.ok_or_else(|| anyhow::anyhow!("missing mfj-created stanza"))?;
         let kind = match type_str.as_str() {
             "env" => {
                 if target.is_some() {
@@ -174,7 +175,7 @@ impl Secret {
             meta: SecretMeta {
                 name: name.to_owned(),
                 kind,
-                created: Some(ts),
+                created: ts,
             },
             ciphertext,
         })
@@ -223,15 +224,9 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
         let meta = secret.meta();
         match &meta.kind {
             SecretKind::File { target } => {
-                println!(
-                    "{}\t{}\t{}\t{}",
-                    meta.name,
-                    meta.kind,
-                    target,
-                    meta.created.unwrap()
-                )
+                println!("{}\t{}\t{}\t{}", meta.name, meta.kind, target, meta.created)
             }
-            SecretKind::Env => println!("{}\t{}\t{}", meta.name, meta.kind, meta.created.unwrap()),
+            SecretKind::Env => println!("{}\t{}\t{}", meta.name, meta.kind, meta.created),
         }
     }
 
