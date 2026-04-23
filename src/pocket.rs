@@ -1,8 +1,7 @@
 use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
 use crate::dek::Dek;
-use crate::identity::decrypt_identity;
-use crate::identity::identities_dir;
+use crate::identity::Identity;
 use crate::keyring::Keyring;
 use crate::secret::Secret;
 use anyhow::Context;
@@ -103,9 +102,9 @@ impl Pocket<Locked> {
     }
 
     pub fn unlock(self, config: &Config) -> anyhow::Result<Pocket<Unlocked>> {
-        let id = decrypt_identity(&config.default_identity)?;
+        let id = Identity::open(&config.default_identity)?.unlock()?;
         let keyring = Keyring::load(&self)?;
-        let dek = keyring.decrypt_dek(&id)?;
+        let dek = keyring.decrypt_dek(id.as_age())?;
         Ok(Pocket {
             name: self.name,
             dir: self.dir,
@@ -134,14 +133,7 @@ pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> 
 
 fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
-    let pubkey_path = identities_dir()?.join(format!("{}.pub", c.default_identity));
-    let pubkey = std::fs::read_to_string(&pubkey_path)
-        .with_context(|| format!("identity not found: {}", c.default_identity));
-    let recipient: age::x25519::Recipient = pubkey?
-        .trim()
-        .parse()
-        .map_err(|e| anyhow::anyhow!("invalid public key: {e}"))?;
-
+    let recipient = Identity::open(&c.default_identity)?.recipient()?;
     Pocket::create(&name, &recipient)?;
     Ok(())
 }
