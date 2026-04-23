@@ -2,6 +2,7 @@ use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
 use crate::pocket::{decrypt_dek, validate_pocket};
 use crate::stanza::read_stanzas;
+use anyhow::Context;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
@@ -136,5 +137,46 @@ fn file(
     target: Option<String>,
     config: Option<Config>,
 ) -> anyhow::Result<()> {
+    let c = Config::require(config)?;
+    let pocket_dir = validate_pocket(&pocket)?;
+    let dek = decrypt_dek(&pocket_dir, &c)?;
+
+    let source_path = std::path::Path::new(&source);
+    let name = source_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("invalid source path: {}", source))?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+
+    let mut header = String::new();
+    header.push_str("age-encryption.org/v1\n");
+    header.push_str("-> mfj-type: file\n");
+    header.push_str(&format!("-> mfj-name: {name}\n"));
+    match target {
+        Some(t) => header.push_str(&format!("-> mfj-target: {t}\n")),
+        None => header.push_str(&format!("-> mfj-target: {}\n", &source)),
+    }
+    header.push_str(&format!("-> mfj-created: {ts}\n"));
+    header.push_str("---\n");
+
+    let contents = std::fs::read(&source)
+        .with_context(|| format!("source file does not exist: {}", source))?;
+
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&dek));
+    let nonce_bytes: [u8; 12] = rand::rng().random();
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), contents.as_slice())
+        .map_err(|e| anyhow::anyhow!("encryption of value failed: {}", e))?;
+
+    let mut out = Vec::new();
+    out.extend_from_slice(header.as_bytes());
+    out.extend_from_slice(&nonce_bytes);
+    out.extend_from_slice(&ciphertext);
+
+    std::fs::write(pocket_dir.join(format!("{}.enc", name)), &out)?;
+
     Ok(())
 }
