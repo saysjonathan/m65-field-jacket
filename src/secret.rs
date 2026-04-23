@@ -1,83 +1,255 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
-use crate::pocket::{decrypt_dek, validate_pocket};
+use crate::pocket::{Pocket, Unlocked};
 use crate::stanza::read_stanzas;
+use age_core::format::Stanza;
 use anyhow::Context;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
+use std::path::{Path, PathBuf};
 
-pub fn list(pocket: String) -> anyhow::Result<()> {
-    let pocket_dir = validate_pocket(&pocket)?;
+const NONCE_LENGTH: usize = 12;
 
-    for entry in std::fs::read_dir(&pocket_dir)? {
-        let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("enc") {
-            continue;
+#[derive(Debug, PartialEq, Eq)]
+pub enum SecretKind {
+    Env,
+    File { target: String },
+}
+
+impl SecretKind {
+    fn header_lines(&self) -> String {
+        match self {
+            SecretKind::Env => "->mfj-type: env\n".to_owned(),
+            SecretKind::File { target } => format!("-> mfj-type: file\n-> mfj-target: {target}\n"),
+        }
+    }
+}
+
+impl std::fmt::Display for SecretKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            SecretKind::Env => "env",
+            SecretKind::File { .. } => "file",
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct SecretMeta {
+    pub name: String,
+    pub kind: SecretKind,
+    pub created: Option<u64>,
+}
+
+impl SecretMeta {
+    pub fn from_stanzas(stanzas: &[Stanza]) -> anyhow::Result<Self> {
+        let mut name = None;
+        let mut type_str = None;
+        let mut target = None;
+        let mut created = None;
+
+        for s in stanzas {
+            let val = s.args.first().cloned();
+            match s.tag.as_str() {
+                "mfj-name" => name = val,
+                "mfj-type" => type_str = val,
+                "mfj-target" => target = val,
+                "mfj-created" => created = val.map(|v| v.parse()).transpose()?,
+                _ => {}
+            }
         }
 
-        let secret = std::fs::File::open(&path)?;
-        let stanzas = read_stanzas(std::io::BufReader::new(secret))?;
+        let name = name.ok_or_else(|| anyhow::anyhow!("missing mfj-name stanza"))?;
+        let type_str = type_str.ok_or_else(|| anyhow::anyhow!("missing mfj-type stanza"))?;
+        let kind = match type_str.as_str() {
+            "env" => {
+                if target.is_some() {
+                    anyhow::bail!("env secret has unexpected mfj-target");
+                }
+                SecretKind::Env
+            }
+            "file" => {
+                let target = target
+                    .ok_or_else(|| anyhow::anyhow!("missing mfj-target stanza for file secret"))?;
+                SecretKind::File { target }
+            }
+            other => anyhow::bail!("unknown secret kind: {other}"),
+        };
 
-        let map: std::collections::HashMap<&str, &str> = stanzas
-            .iter()
-            .filter_map(|s| Some((s.tag.as_str(), s.args.first()?.as_str())))
-            .collect();
-        let name = map.get("mfj-name").copied().unwrap_or("?");
-        let kind = map.get("mfj-type").copied().unwrap_or("?");
-        let target = map.get("mfj-target").copied();
+        Ok(Self {
+            name,
+            kind,
+            created,
+        })
+    }
+}
 
-        match target {
-            Some(t) => println!("{name}\t{kind}\t{t}"),
-            None => println!("{name}\t{kind}"),
+fn encrypt_and_write(
+    pocket: &Pocket<Unlocked>,
+    path: &Path,
+    header: &str,
+    plaintext: &[u8],
+) -> anyhow::Result<Vec<u8>> {
+    let mut nonce_bytes = [0u8; NONCE_LENGTH];
+    rand::rng().fill_bytes(&mut nonce_bytes);
+    let ct = ChaCha20Poly1305::new(Key::from_slice(pocket.dek().expose()))
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+        .map_err(|e| anyhow::anyhow!("encryption failed: {e}"))?;
+
+    let mut ciphertext = Vec::with_capacity(NONCE_LENGTH + ct.len());
+    ciphertext.extend_from_slice(&nonce_bytes);
+    ciphertext.extend_from_slice(&ct);
+
+    let mut out = Vec::from(header.as_bytes());
+    out.extend_from_slice(&ciphertext);
+    std::fs::write(path, &out)?;
+    Ok(ciphertext)
+}
+
+#[derive(Debug)]
+pub struct Secret {
+    path: PathBuf,
+    meta: SecretMeta,
+    ciphertext: Vec<u8>,
+}
+
+impl Secret {
+    pub fn read(path: &Path) -> anyhow::Result<Self> {
+        let bytes =
+            std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+        let sep = bytes
+            .windows(4)
+            .position(|w| w == b"---\n")
+            .ok_or_else(|| anyhow::anyhow!("malformed .enc file separator"))?;
+        let stanzas = read_stanzas(&bytes[..sep])?;
+        let meta = SecretMeta::from_stanzas(&stanzas)?;
+        let ciphertext = bytes[sep + 4..].to_vec();
+        Ok(Self {
+            path: path.to_owned(),
+            meta,
+            ciphertext,
+        })
+    }
+
+    pub fn meta(&self) -> &SecretMeta {
+        &self.meta
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn decrypt(&self, pocket: &Pocket<Unlocked>) -> anyhow::Result<Vec<u8>> {
+        let (nonce, ciphertext) = self.ciphertext.split_at(NONCE_LENGTH);
+        ChaCha20Poly1305::new(Key::from_slice(pocket.dek().expose()))
+            .decrypt(Nonce::from_slice(nonce), ciphertext)
+            .map_err(|_| anyhow::anyhow!("decryption failed: wrong key or corrupted data"))
+    }
+
+    pub fn delete(self) -> anyhow::Result<()> {
+        std::fs::remove_file(&self.path)
+            .with_context(|| format!("failed to remove secret: {}", self.path.display()))
+    }
+    fn create(
+        pocket: &Pocket<Unlocked>,
+        name: &str,
+        kind: SecretKind,
+        plaintext: &[u8],
+    ) -> anyhow::Result<Self> {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+
+        let header = format!(
+            "age-encryption.org/v1\n\
+            {}\
+            -> mfj-name: {name}\n\
+            -> mfj-created: {ts}\n\
+            ---\n",
+            kind.header_lines(),
+        );
+
+        let path = pocket.secret_path(name);
+        let ciphertext = encrypt_and_write(pocket, &path, &header, plaintext)?;
+
+        Ok(Self {
+            path,
+            meta: SecretMeta {
+                name: name.to_owned(),
+                kind,
+                created: Some(ts),
+            },
+            ciphertext,
+        })
+    }
+
+    pub fn create_env(pocket: &Pocket<Unlocked>, name: &str, value: &[u8]) -> anyhow::Result<Self> {
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            || name.starts_with(|c: char| c.is_ascii_digit())
+        {
+            anyhow::bail!("secret name must match [a-zA-Z_][a-zA-Z0-9_]*");
+        }
+
+        Self::create(pocket, name, SecretKind::Env, value)
+    }
+
+    pub fn create_file(
+        pocket: &Pocket<Unlocked>,
+        source: &Path,
+        target: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let name = source
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("invalid source path: {}", source.display()))?;
+
+        let target_str: String = target
+            .map(String::from)
+            .unwrap_or_else(|| source.to_string_lossy().into_owned());
+
+        let contents = std::fs::read(&source)
+            .with_context(|| format!("source file does not exist: {}", source.display()))?;
+
+        Self::create(
+            pocket,
+            name,
+            SecretKind::File { target: target_str },
+            &contents,
+        )
+    }
+}
+
+pub fn list(pocket: String) -> anyhow::Result<()> {
+    let pocket = Pocket::open(&pocket)?;
+    for secret in pocket.secrets()? {
+        let secret = secret?;
+        let meta = secret.meta();
+        match &meta.kind {
+            SecretKind::File { target } => {
+                println!("{}\t{}\t{}", meta.name, meta.kind, target)
+            }
+            SecretKind::Env => println!("{}\t{}", meta.name, meta.kind),
         }
     }
 
     Ok(())
 }
 
-pub fn get(pocket: String, name: String, config: Option<Config>) -> anyhow::Result<()> {
-    let c = Config::require(config)?;
-    let pocket_dir = validate_pocket(&pocket)?;
-    let dek = decrypt_dek(&pocket_dir, &c)?;
-
-    let enc_file = pocket_dir.join(format!("{}.enc", name));
-    if !enc_file.try_exists()? {
-        anyhow::bail!("secret does not exist: {}", name);
-    }
-
-    let secret = std::fs::read(&enc_file)?;
-    let sep = b"---\n";
-    let sep_pos = secret
-        .windows(4)
-        .position(|w| w == sep)
-        .ok_or_else(|| anyhow::anyhow!("malformed .enc file: missing separator"))?;
-    let blob = &secret[sep_pos + 4..];
-
-    let (nonce_bytes, ciphertext) = blob.split_at(12);
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&dek));
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
-        .map_err(|_| anyhow::anyhow!("decryption failed: wrong key or corrupted data"))?;
+pub fn get(pocket: String, name: String, config: &Config) -> anyhow::Result<()> {
+    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    let secret = pocket.secret(&name)?;
+    let plaintext = secret.decrypt(&pocket)?;
     println!("{}", String::from_utf8(plaintext)?);
-
     Ok(())
 }
 
 pub fn remove(pocket: String, name: String) -> anyhow::Result<()> {
-    let pocket_dir = validate_pocket(&pocket)?;
-
-    let secret = pocket_dir.join(format!("{}.enc", &name));
-    if !secret.try_exists()? {
-        anyhow::bail!("secret does not exist: {}", name);
-    }
-
-    std::fs::remove_file(secret)?;
-
-    Ok(())
+    let pocket = Pocket::open(&pocket)?;
+    pocket.secret(&name)?.delete()
 }
 
-pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
+pub fn set(args: SetArgs, config: &Config) -> anyhow::Result<()> {
     match args.command {
         SetCommands::Env {
             pocket,
@@ -92,42 +264,9 @@ pub fn set(args: SetArgs, config: Option<Config>) -> anyhow::Result<()> {
     }
 }
 
-fn env(pocket: String, name: String, value: String, config: Option<Config>) -> anyhow::Result<()> {
-    let c = Config::require(config)?;
-    let pocket_dir = validate_pocket(&pocket)?;
-    let dek = decrypt_dek(&pocket_dir, &c)?;
-
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        || name.starts_with(|c: char| c.is_ascii_digit())
-    {
-        anyhow::bail!("secret name must match [a-zA-Z_][a-zA-Z0-9_]*");
-    }
-
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-
-    let header = format!(
-        "age-encryption.org/v1\n\
-        -> mfj-type: env\n\
-        -> mfj-name: {name}\n\
-        -> mfj-created: {ts}\n\
-        ---\n"
-    );
-
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&dek));
-    let nonce_bytes: [u8; 12] = rand::rng().random();
-    let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce_bytes), value.as_bytes())
-        .map_err(|e| anyhow::anyhow!("encryption of value failed: {}", e))?;
-
-    let mut out = Vec::new();
-    out.extend_from_slice(header.as_bytes());
-    out.extend_from_slice(&nonce_bytes);
-    out.extend_from_slice(&ciphertext);
-
-    std::fs::write(pocket_dir.join(format!("{}.enc", name)), &out)?;
-
+fn env(pocket: String, name: String, value: String, config: &Config) -> anyhow::Result<()> {
+    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    Secret::create_env(&pocket, &name, value.as_bytes())?;
     Ok(())
 }
 
@@ -135,48 +274,9 @@ fn file(
     pocket: String,
     source: String,
     target: Option<String>,
-    config: Option<Config>,
+    config: &Config,
 ) -> anyhow::Result<()> {
-    let c = Config::require(config)?;
-    let pocket_dir = validate_pocket(&pocket)?;
-    let dek = decrypt_dek(&pocket_dir, &c)?;
-
-    let source_path = std::path::Path::new(&source);
-    let name = source_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| anyhow::anyhow!("invalid source path: {}", source))?;
-
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-
-    let mut header = String::new();
-    header.push_str("age-encryption.org/v1\n");
-    header.push_str("-> mfj-type: file\n");
-    header.push_str(&format!("-> mfj-name: {name}\n"));
-    match target {
-        Some(t) => header.push_str(&format!("-> mfj-target: {t}\n")),
-        None => header.push_str(&format!("-> mfj-target: {}\n", &source)),
-    }
-    header.push_str(&format!("-> mfj-created: {ts}\n"));
-    header.push_str("---\n");
-
-    let contents = std::fs::read(&source)
-        .with_context(|| format!("source file does not exist: {}", source))?;
-
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&dek));
-    let nonce_bytes: [u8; 12] = rand::rng().random();
-    let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce_bytes), contents.as_slice())
-        .map_err(|e| anyhow::anyhow!("encryption of value failed: {}", e))?;
-
-    let mut out = Vec::new();
-    out.extend_from_slice(header.as_bytes());
-    out.extend_from_slice(&nonce_bytes);
-    out.extend_from_slice(&ciphertext);
-
-    std::fs::write(pocket_dir.join(format!("{}.enc", name)), &out)?;
-
+    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    Secret::create_file(&pocket, Path::new(&source), target.as_deref())?;
     Ok(())
 }

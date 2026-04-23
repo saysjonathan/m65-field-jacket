@@ -1,11 +1,17 @@
 use crate::paths::m65_dir;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 const DEFAULT_SESSION_TTL: u64 = 28800;
 
 fn default_ttl() -> u64 {
     DEFAULT_SESSION_TTL
+}
+
+pub(crate) fn m65_home() -> anyhow::Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME not set")?;
+    Ok(Path::new(&home).join(".m65"))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -43,5 +49,9 @@ impl Config {
         let path = m65_dir()?.join("config");
         let contents = serde_json::to_string_pretty(self).context("failed to serialize config")?;
         std::fs::write(&path, contents).context("failed to write config")
+    }
+
+    pub fn path(&self) -> anyhow::Result<PathBuf> {
+        Ok(m65_home()?.join("config"))
     }
 }

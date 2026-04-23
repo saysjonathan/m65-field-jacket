@@ -1,13 +1,13 @@
 mod cli;
 mod config;
 mod identity;
+mod keyring;
 mod paths;
 mod pocket;
 mod secret;
 mod stanza;
 
 use crate::cli::Commands::{Get, Identity, List, Pocket, Remove, Set};
-use anyhow;
 use clap::Parser;
 
 fn main() {
@@ -24,9 +24,9 @@ fn run() -> anyhow::Result<()> {
     match cli.command {
         Identity(args) => identity::dispatch(args, config)?,
         Pocket(args) => pocket::dispatch(args, config)?,
-        Get { pocket, name } => secret::get(pocket, name, config)?,
+        Get { pocket, name } => secret::get(pocket, name, &config::Config::require(config)?)?,
         Remove { pocket, name } => secret::remove(pocket, name)?,
-        Set(args) => secret::set(args, config)?,
+        Set(args) => secret::set(args, &config::Config::require(config)?)?,
         List { pocket } => secret::list(pocket)?,
     }
 
