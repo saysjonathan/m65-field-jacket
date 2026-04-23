@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod dek;
 mod identity;
 mod keyring;
 mod paths;

@@ -1,5 +1,6 @@
 use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
+use crate::dek::Dek;
 use crate::identity::decrypt_identity;
 use crate::paths::identities_dir;
 use crate::secret::Secret;
@@ -7,23 +8,10 @@ use crate::stanza;
 use age_core::format::Stanza;
 use anyhow::Context;
 use rand::prelude::*;
-use secrecy::{ExposeSecret, SecretBox};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const POCKET_BASE: &str = ".m65";
-
-pub struct Dek(SecretBox<[u8; 32]>);
-
-impl Dek {
-    pub fn new(bytes: [u8; 32]) -> Self {
-        Self(SecretBox::new(Box::new(bytes)))
-    }
-
-    pub fn expose(&self) -> &[u8; 32] {
-        self.0.expose_secret()
-    }
-}
 
 pub struct Locked;
 pub struct Unlocked {
@@ -92,7 +80,7 @@ impl Pocket<Locked> {
             anyhow::bail!("pocket already exists: {}", name);
         }
 
-        let mut dek = [0u8; 32];
+        let mut dek = [0u8; Dek::BYTES];
         rand::rng().fill_bytes(&mut dek);
 
         let metadata = stanza::MfjMetadata(vec![Stanza {
@@ -149,7 +137,7 @@ impl Pocket<Locked> {
         let mut dek = Vec::new();
         let mut reader = decryptor.decrypt(std::iter::once(&id as &dyn age::Identity))?;
         std::io::Read::read_to_end(&mut reader, &mut dek)?;
-        let dek_bytes: [u8; 32] = dek
+        let dek_bytes: [u8; Dek::BYTES] = dek
             .try_into()
             .map_err(|_| anyhow::anyhow!("DEK is not 32 bytes"))?;
         Ok(Pocket {
