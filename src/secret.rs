@@ -20,7 +20,7 @@ pub enum SecretKind {
 impl SecretKind {
     fn header_lines(&self) -> String {
         match self {
-            SecretKind::Env => "->mfj-type: env\n".to_owned(),
+            SecretKind::Env => "-> mfj-type: env\n".to_owned(),
             SecretKind::File { target } => format!("-> mfj-type: file\n-> mfj-target: {target}\n"),
         }
     }
