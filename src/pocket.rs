@@ -2,13 +2,10 @@ use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
 use crate::dek::Dek;
 use crate::identity::decrypt_identity;
+use crate::keyring::Keyring;
 use crate::paths::identities_dir;
 use crate::secret::Secret;
-use crate::stanza;
-use age_core::format::Stanza;
 use anyhow::Context;
-use rand::prelude::*;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const POCKET_BASE: &str = ".m65";
@@ -80,32 +77,11 @@ impl Pocket<Locked> {
             anyhow::bail!("pocket already exists: {}", name);
         }
 
-        let mut dek = [0u8; Dek::BYTES];
-        rand::rng().fill_bytes(&mut dek);
-
-        let metadata = stanza::MfjMetadata(vec![Stanza {
-            tag: "mfj-version".to_owned(),
-            args: vec!["1".to_owned()],
-            body: vec![],
-        }]);
-
-        let encryptor = age::Encryptor::with_recipients(
-            [
-                &metadata as &dyn age::Recipient,
-                recipient as &dyn age::Recipient,
-            ]
-            .into_iter(),
-        )?;
-
-        let mut keyring = Vec::new();
-        let mut w = encryptor.wrap_output(&mut keyring)?;
-        w.write_all(&dek)?;
-        w.finish()?;
+        let (keyring, _dek) = Keyring::create(recipient)?;
 
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("failed to create {}", dir.display()))?;
-
-        std::fs::write(dir.join("keyring"), &keyring)?;
+        keyring.save(&dir)?;
 
         let tmp_dir = dir.join(".tmp");
         std::fs::create_dir(&tmp_dir)
@@ -132,20 +108,12 @@ impl Pocket<Locked> {
 
     pub fn unlock(self, config: &Config) -> anyhow::Result<Pocket<Unlocked>> {
         let id = decrypt_identity(&config.default_identity)?;
-        let keyring_bytes = std::fs::read(self.keyring_path())?;
-        let decryptor = age::Decryptor::new(&keyring_bytes[..])?;
-        let mut dek = Vec::new();
-        let mut reader = decryptor.decrypt(std::iter::once(&id as &dyn age::Identity))?;
-        std::io::Read::read_to_end(&mut reader, &mut dek)?;
-        let dek_bytes: [u8; Dek::BYTES] = dek
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("DEK is not 32 bytes"))?;
+        let keyring = Keyring::load(&self)?;
+        let dek = keyring.decrypt_dek(&id)?;
         Ok(Pocket {
             name: self.name,
             dir: self.dir,
-            state: Unlocked {
-                dek: Dek::new(dek_bytes),
-            },
+            state: Unlocked { dek },
         })
     }
 

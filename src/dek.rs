@@ -16,7 +16,7 @@ impl Dek {
         Self::new(bytes)
     }
 
-    pub fn from_bytes(bytes: [u8: Self::BYTES]) -> anyhow::Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         let arr: [u8; Self::BYTES] = bytes
             .try_into()
             .map_err(|_| anyhow::anyhow!("DEK is not {} bytes", Self::BYTES))?;
