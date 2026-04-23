@@ -1,12 +1,16 @@
 use crate::cli::{IdentityArgs, IdentityCommands};
-use crate::config::Config;
-use crate::paths::identities_dir;
+use crate::config::{Config, m65_home};
 use anyhow::Context;
 use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::prelude::*;
 use secrecy::ExposeSecret;
+use std::path::PathBuf;
+
+pub(crate) fn identities_dir() -> anyhow::Result<PathBuf> {
+    Ok(m65_home()?.join("identities"))
+}
 
 pub fn decrypt_identity(name: &str) -> anyhow::Result<age::x25519::Identity> {
     let identity = identities_dir()?.join(name);

@@ -2,8 +2,8 @@ use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
 use crate::dek::Dek;
 use crate::identity::decrypt_identity;
+use crate::identity::identities_dir;
 use crate::keyring::Keyring;
-use crate::paths::identities_dir;
 use crate::secret::Secret;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -22,10 +22,6 @@ pub struct Pocket<S> {
 }
 
 impl<S> Pocket<S> {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn dir(&self) -> &Path {
         &self.dir
     }

@@ -3,7 +3,6 @@ mod config;
 mod dek;
 mod identity;
 mod keyring;
-mod paths;
 mod pocket;
 mod secret;
 mod stanza;

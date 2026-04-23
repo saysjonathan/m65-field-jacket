@@ -136,10 +136,6 @@ impl Secret {
         &self.meta
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     pub fn decrypt(&self, pocket: &Pocket<Unlocked>) -> anyhow::Result<Vec<u8>> {
         let (nonce, ciphertext) = self.ciphertext.split_at(NONCE_LENGTH);
         ChaCha20Poly1305::new(Key::from_slice(pocket.dek().expose()))
@@ -227,9 +223,15 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
         let meta = secret.meta();
         match &meta.kind {
             SecretKind::File { target } => {
-                println!("{}\t{}\t{}", meta.name, meta.kind, target)
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    meta.name,
+                    meta.kind,
+                    target,
+                    meta.created.unwrap()
+                )
             }
-            SecretKind::Env => println!("{}\t{}", meta.name, meta.kind),
+            SecretKind::Env => println!("{}\t{}\t{}", meta.name, meta.kind, meta.created.unwrap()),
         }
     }
 
