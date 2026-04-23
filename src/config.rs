@@ -1,4 +1,3 @@
-use crate::paths::m65_dir;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -36,7 +35,7 @@ impl Config {
     }
 
     pub fn load() -> anyhow::Result<Option<Self>> {
-        let path = m65_dir()?.join("config");
+        let path = Self::path()?;
         if !path.exists() {
             return Ok(None);
         }
@@ -46,12 +45,12 @@ impl Config {
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = m65_dir()?.join("config");
+        let path = Self::path()?;
         let contents = serde_json::to_string_pretty(self).context("failed to serialize config")?;
         std::fs::write(&path, contents).context("failed to write config")
     }
 
-    pub fn path(&self) -> anyhow::Result<PathBuf> {
+    pub fn path() -> anyhow::Result<PathBuf> {
         Ok(m65_home()?.join("config"))
     }
 }
