@@ -1,6 +1,6 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
-use crate::pocket::{Pocket, Unlocked};
+use crate::pocket::{Pocket, PocketName, Unlocked};
 use crate::stanza::read_stanzas;
 use age_core::format::Stanza;
 use anyhow::Context;
@@ -217,7 +217,7 @@ impl Secret {
     }
 }
 
-pub fn list(pocket: String) -> anyhow::Result<()> {
+pub fn list(pocket: PocketName) -> anyhow::Result<()> {
     let pocket = Pocket::open(&pocket)?;
     for secret in pocket.secrets()? {
         let secret = secret?;
@@ -233,7 +233,7 @@ pub fn list(pocket: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn get(pocket: String, name: String, config: &Config) -> anyhow::Result<()> {
+pub fn get(pocket: PocketName, name: String, config: &Config) -> anyhow::Result<()> {
     let pocket = Pocket::open(&pocket)?.unlock(config)?;
     let secret = pocket.secret(&name)?;
     let plaintext = secret.decrypt(&pocket)?;
@@ -241,7 +241,7 @@ pub fn get(pocket: String, name: String, config: &Config) -> anyhow::Result<()> 
     Ok(())
 }
 
-pub fn remove(pocket: String, name: String) -> anyhow::Result<()> {
+pub fn remove(pocket: PocketName, name: String) -> anyhow::Result<()> {
     let pocket = Pocket::open(&pocket)?;
     pocket.secret(&name)?.delete()
 }
@@ -261,14 +261,14 @@ pub fn set(args: SetArgs, config: &Config) -> anyhow::Result<()> {
     }
 }
 
-fn env(pocket: String, name: String, value: String, config: &Config) -> anyhow::Result<()> {
+fn env(pocket: PocketName, name: String, value: String, config: &Config) -> anyhow::Result<()> {
     let pocket = Pocket::open(&pocket)?.unlock(config)?;
     Secret::create_env(&pocket, &name, value.as_bytes())?;
     Ok(())
 }
 
 fn file(
-    pocket: String,
+    pocket: PocketName,
     source: String,
     target: Option<String>,
     config: &Config,

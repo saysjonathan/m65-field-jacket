@@ -18,19 +18,19 @@ pub struct Unlocked {
 }
 
 pub struct Identity<S> {
-    name: String,
+    name: IdentityName,
     state: S,
 }
 
 impl<S> Identity<S> {
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &IdentityName {
         &self.name
     }
 
     pub fn recipient(&self) -> anyhow::Result<age::x25519::Recipient> {
-        let path = identities_dir()?.join(format!("{}.pub", self.name));
+        let path = identities_dir()?.join(format!("{}.pub", self.name()));
         let contents = std::fs::read_to_string(&path)
-            .with_context(|| format!("identity pubkey not found: {}", self.name))?;
+            .with_context(|| format!("identity pubkey not found: {}", self.name()))?;
 
         contents
             .trim()
@@ -40,8 +40,8 @@ impl<S> Identity<S> {
 }
 
 impl Identity<Locked> {
-    pub fn open(name: &str) -> anyhow::Result<Self> {
-        let path = identities_dir()?.join(name);
+    pub fn open(name: &IdentityName) -> anyhow::Result<Self> {
+        let path = identities_dir()?.join(name.as_str());
         if !path.exists() {
             anyhow::bail!("identity does not exist: {}", name);
         }
@@ -52,9 +52,9 @@ impl Identity<Locked> {
     }
 
     pub fn unlock(self) -> anyhow::Result<Identity<Unlocked>> {
-        let path = identities_dir()?.join(&self.name);
+        let path = identities_dir()?.join(self.name.as_str());
         let blob =
-            std::fs::read(&path).with_context(|| format!("identity not found: {}", self.name))?;
+            std::fs::read(&path).with_context(|| format!("identity not found: {}", self.name()))?;
         let salt = &blob[0..16];
         let nonce = &blob[16..28];
         let ciphertext = &blob[28..];
@@ -83,12 +83,12 @@ impl Identity<Locked> {
         })
     }
 
-    pub fn create(name: &str) -> anyhow::Result<(Self, age::x25519::Recipient)> {
+    pub fn create(name: &IdentityName) -> anyhow::Result<(Self, age::x25519::Recipient)> {
         let identities_dir = identities_dir()?;
         std::fs::create_dir_all(&identities_dir).context("failed to create ~/.m65/identities")?;
 
-        let identity_path = identities_dir.join(&name);
-        let pub_path = identities_dir.join(format!("{name}.pub"));
+        let identity_path = identities_dir.join(name.as_str());
+        let pub_path = identities_dir.join(format!("{}.pub", name.as_str()));
 
         if identity_path.exists() {
             anyhow::bail!("identity already exists: {name}");
@@ -147,10 +147,12 @@ impl Identity<Locked> {
                 continue;
             }
             if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                out.push(Self {
-                    name: name.to_owned(),
-                    state: Locked,
-                })
+                if let Ok(name) = name.parse::<IdentityName>() {
+                    out.push(Self {
+                        name: name.to_owned(),
+                        state: Locked,
+                    });
+                }
             }
         }
         Ok(out)
@@ -158,8 +160,8 @@ impl Identity<Locked> {
 
     pub fn delete(self) -> anyhow::Result<()> {
         let dir = identities_dir()?;
-        std::fs::remove_file(dir.join(&self.name))?;
-        std::fs::remove_file(dir.join(format!("{}.pub", self.name)))?;
+        std::fs::remove_file(dir.join(self.name.as_str()))?;
+        std::fs::remove_file(dir.join(format!("{}.pub", self.name.as_str())))?;
         Ok(())
     }
 }
@@ -167,6 +169,55 @@ impl Identity<Locked> {
 impl Identity<Unlocked> {
     pub fn as_age(&self) -> &dyn age::Identity {
         &self.state.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IdentityName(String);
+
+impl IdentityName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::str::FromStr for IdentityName {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        if s.is_empty() {
+            anyhow::bail!("identity name must not be empty");
+        }
+
+        if s.len() > 64 {
+            anyhow::bail!("identity name must be <= 64 chars");
+        }
+
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            anyhow::bail!("identity name must be alphanumeric, hyphen, or underscore");
+        }
+        Ok(Self(s.to_owned()))
+    }
+}
+
+impl AsRef<str> for IdentityName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for IdentityName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<IdentityName> for String {
+    fn from(value: IdentityName) -> Self {
+        value.0
     }
 }
 
@@ -181,18 +232,18 @@ pub fn dispatch(args: IdentityArgs, config: Option<Config>) -> anyhow::Result<()
     }
 }
 
-fn init(name: String, set_default: bool, config: Option<Config>) -> anyhow::Result<()> {
+fn init(name: IdentityName, set_default: bool, config: Option<Config>) -> anyhow::Result<()> {
     let (_identity, pubkey) = Identity::create(&name)?;
 
     match config {
         Some(mut c) => {
             if set_default {
-                c.default_identity = name;
+                c.default_identity = name.into();
                 c.save()?
             }
         }
         None => {
-            let c = Config::new(name);
+            let c = Config::new(name.into());
             c.save()?
         }
     }
@@ -207,15 +258,15 @@ fn default(config: Option<Config>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn set_default(name: String, config: Option<Config>) -> anyhow::Result<()> {
+fn set_default(name: IdentityName, config: Option<Config>) -> anyhow::Result<()> {
     let mut c = Config::require(config)?;
     Identity::open(&name)?;
-    c.default_identity = name;
+    c.default_identity = name.into();
     c.save()?;
     Ok(())
 }
 
-fn show(name: String) -> anyhow::Result<()> {
+fn show(name: IdentityName) -> anyhow::Result<()> {
     println!("{}", Identity::open(&name)?.recipient()?);
     Ok(())
 }
@@ -223,7 +274,7 @@ fn show(name: String) -> anyhow::Result<()> {
 fn list(config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
     for identity in Identity::list()? {
-        let marker = if c.default_identity == identity.name() {
+        let marker = if c.default_identity == identity.name.as_str() {
             "* "
         } else {
             "  "
@@ -234,9 +285,9 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: String, config: Option<Config>) -> anyhow::Result<()> {
+fn remove(name: IdentityName, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
-    if c.default_identity == name {
+    if c.default_identity == name.as_str() {
         anyhow::bail!(
             "cannot remove default identity '{}'; set a different default first",
             name
@@ -247,7 +298,7 @@ fn remove(name: String, config: Option<Config>) -> anyhow::Result<()> {
     std::io::Write::flush(&mut std::io::stdout())?;
     let mut input = String::new();
     let _ = std::io::stdin().read_line(&mut input);
-    if input.trim() != name {
+    if input.trim() != name.as_str() {
         anyhow::bail!("name did not match; aborting");
     }
 

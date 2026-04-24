@@ -1,3 +1,5 @@
+use crate::identity::IdentityName;
+use crate::pocket::PocketName;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -14,14 +16,14 @@ pub enum Commands {
     Pocket(PocketArgs),
     Set(SetArgs),
     List {
-        pocket: String,
+        pocket: PocketName,
     },
     Get {
-        pocket: String,
+        pocket: PocketName,
         name: String,
     },
     Remove {
-        pocket: String,
+        pocket: PocketName,
         name: String,
     },
 }
@@ -36,7 +38,7 @@ pub struct IdentityArgs {
 pub enum IdentityCommands {
     Init {
         #[arg(value_name = "NAME", default_value = "default")]
-        name: String,
+        name: IdentityName,
 
         #[arg(short = 'd', long)]
         set_default: bool,
@@ -46,19 +48,19 @@ pub enum IdentityCommands {
 
     SetDefault {
         #[arg(value_name = "NAME")]
-        name: String,
+        name: IdentityName,
     },
 
     Show {
         #[arg(value_name = "NAME", default_value = "default")]
-        name: String,
+        name: IdentityName,
     },
 
     List {},
 
     Remove {
         #[arg(value_name = "NAME")]
-        name: String,
+        name: IdentityName,
     },
 }
 
@@ -72,14 +74,14 @@ pub struct PocketArgs {
 pub enum PocketCommands {
     Init {
         #[arg(value_name = "NAME")]
-        name: String,
+        name: PocketName,
     },
 
     List {},
 
     Remove {
         #[arg(value_name = "NAME")]
-        name: String,
+        name: PocketName,
     },
 }
 
@@ -92,13 +94,13 @@ pub struct SetArgs {
 #[derive(Debug, Subcommand)]
 pub enum SetCommands {
     Env {
-        pocket: String,
+        pocket: PocketName,
         name: String,
         value: String,
     },
 
     File {
-        pocket: String,
+        pocket: PocketName,
         source: String,
         target: Option<String>,
     },

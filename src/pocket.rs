@@ -1,7 +1,7 @@
 use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
 use crate::dek::Dek;
-use crate::identity::Identity;
+use crate::identity::{Identity, IdentityName};
 use crate::keyring::Keyring;
 use crate::secret::Secret;
 use anyhow::Context;
@@ -15,7 +15,7 @@ pub struct Unlocked {
 }
 
 pub struct Pocket<S> {
-    name: String,
+    name: PocketName,
     dir: PathBuf,
     state: S,
 }
@@ -55,19 +55,8 @@ impl<S> Pocket<S> {
 }
 
 impl Pocket<Locked> {
-    pub fn create(name: &str, recipient: &age::x25519::Recipient) -> anyhow::Result<Self> {
-        if !name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        {
-            anyhow::bail!("pocket name must be alphanumeric");
-        }
-
-        if name.len() > 64 {
-            anyhow::bail!("pocket name must be <=64 chars");
-        }
-
-        let dir = Path::new(POCKET_BASE).join(name);
+    pub fn create(name: &PocketName, recipient: &age::x25519::Recipient) -> anyhow::Result<Self> {
+        let dir = Path::new(POCKET_BASE).join(name.as_str());
         if dir.exists() {
             anyhow::bail!("pocket already exists: {}", name);
         }
@@ -89,8 +78,8 @@ impl Pocket<Locked> {
         })
     }
 
-    pub fn open(name: &str) -> anyhow::Result<Self> {
-        let dir = Path::new(POCKET_BASE).join(name);
+    pub fn open(name: &PocketName) -> anyhow::Result<Self> {
+        let dir = Path::new(POCKET_BASE).join(name.as_str());
         if !dir.exists() {
             anyhow::bail!("pocket not initialized: {name}. run `mfj pocket init` to create");
         }
@@ -102,7 +91,8 @@ impl Pocket<Locked> {
     }
 
     pub fn unlock(self, config: &Config) -> anyhow::Result<Pocket<Unlocked>> {
-        let id = Identity::open(&config.default_identity)?.unlock()?;
+        let name: IdentityName = config.default_identity.parse()?;
+        let id = Identity::open(&name)?.unlock()?;
         let keyring = Keyring::load(&self)?;
         let dek = keyring.decrypt_dek(id.as_age())?;
         Ok(Pocket {
@@ -123,6 +113,50 @@ impl Pocket<Unlocked> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PocketName(String);
+
+impl PocketName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::str::FromStr for PocketName {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        if s.is_empty() {
+            anyhow::bail!("pocket name must not be empty");
+        }
+
+        if s.len() > 64 {
+            anyhow::bail!("pocket name must be <=64 chars");
+        }
+
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            anyhow::bail!("pocket name must be alphanumeric");
+        }
+
+        Ok(Self(s.to_owned()))
+    }
+}
+
+impl std::fmt::Display for PocketName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for PocketName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
     match args.command {
         PocketCommands::Init { name } => init(name, config),
@@ -131,9 +165,10 @@ pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> 
     }
 }
 
-fn init(name: String, config: Option<Config>) -> anyhow::Result<()> {
+fn init(name: PocketName, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
-    let recipient = Identity::open(&c.default_identity)?.recipient()?;
+    let id: IdentityName = c.default_identity.parse()?;
+    let recipient = Identity::open(&id)?.recipient()?;
     Pocket::create(&name, &recipient)?;
     Ok(())
 }
@@ -146,14 +181,14 @@ fn list() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: String) -> anyhow::Result<()> {
+fn remove(name: PocketName) -> anyhow::Result<()> {
     let pocket = Pocket::open(&name)?;
 
     print!("Type the pocket name to confirm removal: ");
     std::io::Write::flush(&mut std::io::stdout())?;
     let mut input = String::new();
     let _ = std::io::stdin().read_line(&mut input);
-    if input.trim() != name {
+    if input.trim() != name.as_str() {
         anyhow::bail!("name did not match; aborting");
     }
     pocket.delete()?;
