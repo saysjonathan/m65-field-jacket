@@ -5,6 +5,7 @@ mod identity;
 mod keyring;
 mod pocket;
 mod secret;
+mod session;
 mod stanza;
 
 use crate::cli::Commands::{Get, Identity, List, Pocket, Remove, Set};
