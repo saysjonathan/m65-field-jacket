@@ -41,6 +41,41 @@ impl SessionRecord {
     pub fn path() -> anyhow::Result<PathBuf> {
         Ok(m65_home()?.join("session"))
     }
+
+    pub fn get(&self, key: &str) -> Option<Dek> {
+        let entry = self.entries.get(key)?;
+        if entry.expires_unix <= now_unix() {
+            return None;
+        }
+        Some(Dek::new(entry.bytes))
+    }
+
+    pub fn insert(&mut self, key: &str, dek: &Dek, ttl: u64) {
+        self.entries.insert(
+            key.to_owned(),
+            CachedDek {
+                bytes: *dek.expose(),
+                expires_unix: now_unix() + ttl,
+            },
+        );
+    }
+
+    pub fn invalidate(&mut self, key: &str) -> bool {
+        self.entries.remove(key).is_some()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn remove() -> anyhow::Result<()> {
+        let path = Self::path()?;
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .with_context(|| format!("failed to remove session: {}", &path.display()))?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -70,4 +105,11 @@ mod hex_bytes {
             serde::de::Error::custom(format!("expected {} bytes, got {}", N, v.len()))
         })
     }
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before UNIX epoch")
+        .as_secs()
 }

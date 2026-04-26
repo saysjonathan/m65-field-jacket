@@ -4,6 +4,7 @@ use crate::dek::Dek;
 use crate::identity::{Identity, IdentityName};
 use crate::keyring::Keyring;
 use crate::secret::Secret;
+use crate::session;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 
@@ -52,6 +53,12 @@ impl<S> Pocket<S> {
         }
         Secret::read(&path)
     }
+
+    pub fn session_key(&self) -> anyhow::Result<String> {
+        let abs = std::fs::canonicalize(&self.dir)
+            .with_context(|| format!("failed to canonicalize: {}", self.dir.display()))?;
+        Ok(abs.to_string_lossy().into_owned())
+    }
 }
 
 impl Pocket<Locked> {
@@ -91,15 +98,25 @@ impl Pocket<Locked> {
     }
 
     pub fn unlock(self, config: &Config) -> anyhow::Result<Pocket<Unlocked>> {
+        let key = self.session_key()?;
+        if let Some(dek) = session::try_resume(&key)? {
+            return Ok(self.into_unlocked(dek));
+        }
+
         let name: IdentityName = config.default_identity.parse()?;
         let id = Identity::open(&name)?.unlock()?;
         let keyring = Keyring::load(&self)?;
         let dek = keyring.decrypt_dek(id.as_age())?;
-        Ok(Pocket {
+        session::establish(&key, &dek, config)?;
+        Ok(self.into_unlocked(dek))
+    }
+
+    fn into_unlocked(self, dek: Dek) -> Pocket<Unlocked> {
+        Pocket {
             name: self.name,
             dir: self.dir,
             state: Unlocked { dek },
-        })
+        }
     }
 
     pub fn delete(self) -> anyhow::Result<()> {
