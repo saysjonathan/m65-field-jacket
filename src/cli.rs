@@ -26,6 +26,12 @@ pub enum Commands {
         pocket: PocketName,
         name: String,
     },
+    Lock {
+        pocket: Option<PocketName>,
+    },
+    Unlock {
+        pocket: PocketName,
+    },
 }
 
 #[derive(Debug, Args)]

@@ -212,3 +212,24 @@ fn remove(name: PocketName) -> anyhow::Result<()> {
     println!("removed pocket: {}", name);
     Ok(())
 }
+
+pub fn lock(pocket: Option<PocketName>) -> anyhow::Result<()> {
+    match pocket {
+        Some(name) => {
+            let key = Pocket::open(&name)?.session_key()?;
+            session::invalidate_pocket(&key)?;
+            println!("locked: {}", name);
+        }
+        None => {
+            session::invalidate_all()?;
+            println!("locked all pockets");
+        }
+    }
+    Ok(())
+}
+
+pub fn unlock(name: PocketName, config: &Config) -> anyhow::Result<()> {
+    Pocket::open(&name)?.unlock(config)?;
+    println!("unlocked: {}", name);
+    Ok(())
+}

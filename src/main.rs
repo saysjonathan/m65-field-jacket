@@ -8,7 +8,7 @@ mod secret;
 mod session;
 mod stanza;
 
-use crate::cli::Commands::{Get, Identity, List, Pocket, Remove, Set};
+use crate::cli::Commands::{Get, Identity, List, Lock, Pocket, Remove, Set, Unlock};
 use clap::Parser;
 
 fn main() {
@@ -29,6 +29,8 @@ fn run() -> anyhow::Result<()> {
         Remove { pocket, name } => secret::remove(pocket, name)?,
         Set(args) => secret::set(args, &config::Config::require(config)?)?,
         List { pocket } => secret::list(pocket)?,
+        Lock { pocket } => pocket::lock(pocket)?,
+        Unlock { pocket } => pocket::unlock(pocket, &config::Config::require(config)?)?,
     }
 
     Ok(())
