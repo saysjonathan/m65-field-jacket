@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod dek;
+mod error;
 mod identity;
 mod keyring;
 mod pocket;
@@ -10,6 +11,7 @@ mod stanza;
 
 use crate::cli::Commands::{Get, Identity, List, Lock, Pocket, Remove, Set, Unlock};
 use clap::Parser;
+pub use error::{Error, Result};
 
 fn main() {
     if let Err(e) = run() {
