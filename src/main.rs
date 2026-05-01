@@ -9,6 +9,7 @@ mod pocket;
 mod secret;
 mod session;
 mod stanza;
+mod storage;
 
 use crate::cli::Commands::{Get, Identity, List, Lock, Pocket, Remove, Set, Unlock};
 use clap::Parser;

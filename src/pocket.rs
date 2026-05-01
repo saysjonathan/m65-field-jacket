@@ -5,10 +5,9 @@ use crate::identity::{Identity, IdentityName};
 use crate::keyring::Keyring;
 use crate::secret::Secret;
 use crate::session;
+use crate::storage;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
-
-const POCKET_BASE: &str = ".m65";
 
 pub struct Locked;
 pub struct Unlocked {
@@ -26,14 +25,6 @@ impl<S> Pocket<S> {
         &self.dir
     }
 
-    pub fn keyring_path(&self) -> PathBuf {
-        self.dir.join("keyring")
-    }
-
-    pub fn secret_path(&self, name: &str) -> PathBuf {
-        self.dir.join(format!("{}.enc", name))
-    }
-
     pub fn secrets(&self) -> anyhow::Result<impl Iterator<Item = anyhow::Result<Secret>>> {
         Ok(
             std::fs::read_dir(&self.dir)?.filter_map(|entry| match entry {
@@ -47,7 +38,7 @@ impl<S> Pocket<S> {
     }
 
     pub fn secret(&self, name: &str) -> anyhow::Result<Secret> {
-        let path = self.secret_path(name);
+        let path = storage::secret(&self.dir, name);
         if !path.try_exists()? {
             anyhow::bail!("secret does not exist: {name}");
         }
@@ -62,8 +53,12 @@ impl<S> Pocket<S> {
 }
 
 impl Pocket<Locked> {
-    pub fn create(name: &PocketName, recipient: &age::x25519::Recipient) -> anyhow::Result<Self> {
-        let dir = Path::new(POCKET_BASE).join(name.as_str());
+    pub fn create(
+        name: &PocketName,
+        recipient: &age::x25519::Recipient,
+        repo_root: &Path,
+    ) -> anyhow::Result<Self> {
+        let dir = storage::pocket_dir(repo_root, name.as_str());
         if dir.exists() {
             anyhow::bail!("pocket already exists: {}", name);
         }
@@ -85,8 +80,8 @@ impl Pocket<Locked> {
         })
     }
 
-    pub fn open(name: &PocketName) -> anyhow::Result<Self> {
-        let dir = Path::new(POCKET_BASE).join(name.as_str());
+    pub fn open(name: &PocketName, repo_root: &Path) -> anyhow::Result<Self> {
+        let dir = storage::pocket_dir(repo_root, name.as_str());
         if !dir.exists() {
             anyhow::bail!("pocket not initialized: {name}. run `mfj pocket init` to create");
         }
@@ -105,7 +100,7 @@ impl Pocket<Locked> {
 
         let name: IdentityName = config.default_identity.parse()?;
         let id = Identity::open(&name)?.unlock()?;
-        let keyring = Keyring::load(&self)?;
+        let keyring = Keyring::load(self.dir())?;
         let dek = keyring.decrypt_dek(id.as_age())?;
         session::establish(&key, &dek, config)?;
         Ok(self.into_unlocked(dek))
@@ -186,12 +181,14 @@ fn init(name: PocketName, config: Option<Config>) -> anyhow::Result<()> {
     let c = Config::require(config)?;
     let id: IdentityName = c.default_identity.parse()?;
     let recipient = Identity::open(&id)?.recipient()?;
-    Pocket::create(&name, &recipient)?;
+    let repo_root = storage::init_repo_root()?;
+    Pocket::create(&name, &recipient, &repo_root)?;
     Ok(())
 }
 
 fn list() -> anyhow::Result<()> {
-    for entry in std::fs::read_dir(".m65")? {
+    let repo_root = storage::repo_root()?;
+    for entry in std::fs::read_dir(storage::pockets_dir(&repo_root))? {
         println!("{}", entry?.file_name().to_string_lossy());
     }
 
@@ -199,7 +196,8 @@ fn list() -> anyhow::Result<()> {
 }
 
 fn remove(name: PocketName) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&name)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&name, &repo_root)?;
 
     print!("Type the pocket name to confirm removal: ");
     std::io::Write::flush(&mut std::io::stdout())?;
@@ -216,7 +214,8 @@ fn remove(name: PocketName) -> anyhow::Result<()> {
 pub fn lock(pocket: Option<PocketName>) -> anyhow::Result<()> {
     match pocket {
         Some(name) => {
-            let key = Pocket::open(&name)?.session_key()?;
+            let repo_root = storage::repo_root()?;
+            let key = Pocket::open(&name, &repo_root)?.session_key()?;
             session::invalidate_pocket(&key)?;
             println!("locked: {}", name);
         }
@@ -229,7 +228,8 @@ pub fn lock(pocket: Option<PocketName>) -> anyhow::Result<()> {
 }
 
 pub fn unlock(name: PocketName, config: &Config) -> anyhow::Result<()> {
-    Pocket::open(&name)?.unlock(config)?;
+    let repo_root = storage::repo_root()?;
+    Pocket::open(&name, &repo_root)?.unlock(config)?;
     println!("unlocked: {}", name);
     Ok(())
 }

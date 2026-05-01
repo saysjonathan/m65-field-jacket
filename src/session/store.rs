@@ -1,5 +1,5 @@
-use crate::config::m65_home;
 use crate::dek::Dek;
+use crate::storage;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ impl SessionRecord {
     }
 
     pub fn path() -> anyhow::Result<PathBuf> {
-        Ok(m65_home()?.join("session"))
+        Ok(storage::session()?)
     }
 
     pub fn get(&self, key: &str) -> Option<Dek> {

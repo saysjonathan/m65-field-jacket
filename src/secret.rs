@@ -3,6 +3,7 @@ use crate::config::Config;
 use crate::crypto;
 use crate::pocket::{Pocket, PocketName, Unlocked};
 use crate::stanza::read_stanzas;
+use crate::storage;
 use age_core::format::Stanza;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -161,7 +162,7 @@ impl Secret {
             kind.header_lines(),
         );
 
-        let path = pocket.secret_path(name);
+        let path = storage::secret(pocket.dir(), name);
         let ciphertext = encrypt_and_write(pocket, &path, &header, plaintext)?;
 
         Ok(Self {
@@ -212,7 +213,8 @@ impl Secret {
 }
 
 pub fn list(pocket: PocketName) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&pocket)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&pocket, &repo_root)?;
     for secret in pocket.secrets()? {
         let secret = secret?;
         let meta = secret.meta();
@@ -228,7 +230,8 @@ pub fn list(pocket: PocketName) -> anyhow::Result<()> {
 }
 
 pub fn get(pocket: PocketName, name: String, config: &Config) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
     let secret = pocket.secret(&name)?;
     let plaintext = secret.decrypt(&pocket)?;
     println!("{}", String::from_utf8(plaintext)?);
@@ -236,7 +239,8 @@ pub fn get(pocket: PocketName, name: String, config: &Config) -> anyhow::Result<
 }
 
 pub fn remove(pocket: PocketName, name: String) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&pocket)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&pocket, &repo_root)?;
     pocket.secret(&name)?.delete()
 }
 
@@ -256,7 +260,8 @@ pub fn set(args: SetArgs, config: &Config) -> anyhow::Result<()> {
 }
 
 fn env(pocket: PocketName, name: String, value: String, config: &Config) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
     Secret::create_env(&pocket, &name, value.as_bytes())?;
     Ok(())
 }
@@ -267,7 +272,8 @@ fn file(
     target: Option<String>,
     config: &Config,
 ) -> anyhow::Result<()> {
-    let pocket = Pocket::open(&pocket)?.unlock(config)?;
+    let repo_root = storage::repo_root()?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
     Secret::create_file(&pocket, Path::new(&source), target.as_deref())?;
     Ok(())
 }

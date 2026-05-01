@@ -1,13 +1,9 @@
 use crate::cli::{IdentityArgs, IdentityCommands};
-use crate::config::{Config, m65_home};
+use crate::config::Config;
 use crate::crypto;
+use crate::storage;
 use anyhow::Context;
 use secrecy::ExposeSecret;
-use std::path::PathBuf;
-
-fn identities_dir() -> anyhow::Result<PathBuf> {
-    Ok(m65_home()?.join("identities"))
-}
 
 pub struct Locked;
 pub struct Unlocked {
@@ -25,7 +21,7 @@ impl<S> Identity<S> {
     }
 
     pub fn recipient(&self) -> anyhow::Result<age::x25519::Recipient> {
-        let path = identities_dir()?.join(format!("{}.pub", self.name()));
+        let path = storage::identity_public(self.name().as_str())?;
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("identity pubkey not found: {}", self.name()))?;
 
@@ -38,7 +34,7 @@ impl<S> Identity<S> {
 
 impl Identity<Locked> {
     pub fn open(name: &IdentityName) -> anyhow::Result<Self> {
-        let path = identities_dir()?.join(name.as_str());
+        let path = storage::identity_private(name.as_str())?;
         if !path.exists() {
             anyhow::bail!("identity does not exist: {}", name);
         }
@@ -49,7 +45,7 @@ impl Identity<Locked> {
     }
 
     pub fn unlock(self) -> anyhow::Result<Identity<Unlocked>> {
-        let path = identities_dir()?.join(self.name.as_str());
+        let path = storage::identity_private(self.name().as_str())?;
         let blob =
             std::fs::read(&path).with_context(|| format!("identity not found: {}", self.name()))?;
 
@@ -79,11 +75,11 @@ impl Identity<Locked> {
     }
 
     pub fn create(name: &IdentityName) -> anyhow::Result<(Self, age::x25519::Recipient)> {
-        let identities_dir = identities_dir()?;
+        let identities_dir = storage::identities_dir()?;
         std::fs::create_dir_all(&identities_dir).context("failed to create ~/.m65/identities")?;
 
-        let identity_path = identities_dir.join(name.as_str());
-        let pub_path = identities_dir.join(format!("{}.pub", name.as_str()));
+        let identity_path = storage::identity_private(name.as_str())?;
+        let pub_path = storage::identity_public(name.as_str())?;
 
         if identity_path.exists() {
             anyhow::bail!("identity already exists: {name}");
@@ -128,7 +124,7 @@ impl Identity<Locked> {
 
     pub fn list() -> anyhow::Result<Vec<Self>> {
         let mut out = Vec::new();
-        for entry in std::fs::read_dir(identities_dir()?)? {
+        for entry in std::fs::read_dir(storage::identities_dir()?)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) != Some("pub") {
                 continue;
@@ -146,9 +142,8 @@ impl Identity<Locked> {
     }
 
     pub fn delete(self) -> anyhow::Result<()> {
-        let dir = identities_dir()?;
-        std::fs::remove_file(dir.join(self.name.as_str()))?;
-        std::fs::remove_file(dir.join(format!("{}.pub", self.name.as_str())))?;
+        std::fs::remove_file(storage::identity_private(self.name().as_str())?)?;
+        std::fs::remove_file(storage::identity_public(self.name().as_str())?)?;
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use crate::dek::Dek;
-use crate::pocket::{Locked, Pocket};
 use crate::stanza::MfjMetadata;
+use crate::storage;
 use age_core::format::Stanza;
 use anyhow::Context;
 use std::io::Write;
@@ -35,18 +35,14 @@ impl Keyring {
         Ok((Self { bytes }, dek))
     }
 
-    pub fn load(pocket: &Pocket<Locked>) -> anyhow::Result<Self> {
-        let bytes = std::fs::read(pocket.keyring_path()).with_context(|| {
-            format!(
-                "failed to read keyring for pocket: {}",
-                pocket.dir().display()
-            )
-        })?;
+    pub fn load(dir: &Path) -> anyhow::Result<Self> {
+        let bytes = std::fs::read(storage::keyring(dir))
+            .with_context(|| format!("failed to read keyring for pocket: {}", dir.display()))?;
         Ok(Self { bytes })
     }
 
     pub fn save(&self, dir: &Path) -> anyhow::Result<()> {
-        std::fs::write(dir.join("keyring"), &self.bytes)
+        std::fs::write(storage::keyring(dir), &self.bytes)
             .with_context(|| format!("failed to write keyring for pocket: {}", dir.display()))
     }
 
