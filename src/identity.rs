@@ -1,6 +1,7 @@
 use crate::cli::{IdentityArgs, IdentityCommands};
 use crate::config::Config;
 use crate::crypto;
+use crate::io::{Confirm, PassphraseSource};
 use crate::storage;
 use anyhow::Context;
 use secrecy::ExposeSecret;
@@ -44,7 +45,7 @@ impl Identity<Locked> {
         })
     }
 
-    pub fn unlock(self) -> anyhow::Result<Identity<Unlocked>> {
+    pub fn unlock(self, passphrase: &dyn PassphraseSource) -> anyhow::Result<Identity<Unlocked>> {
         let path = storage::identity_private(self.name().as_str())?;
         let blob =
             std::fs::read(&path).with_context(|| format!("identity not found: {}", self.name()))?;
@@ -57,10 +58,11 @@ impl Identity<Locked> {
             .split_first_chunk::<{ crypto::NONCE_LEN }>()
             .ok_or_else(|| anyhow::anyhow!("malformed identity blob: nonce"))?;
 
-        let passphrase =
-            rpassword::prompt_password("Passphrase: ").context("failed to read passphrase")?;
+        let pass = passphrase
+            .read("Passphrase: ")
+            .context("failed to read passphrase")?;
 
-        let kek = crypto::derive_kek(passphrase.as_bytes(), salt)?;
+        let kek = crypto::derive_kek(pass.as_bytes(), salt)?;
         let plaintext = crypto::decrypt(kek.expose_secret(), nonce, ciphertext)?;
 
         let key_str = std::str::from_utf8(&plaintext).context("decrypted key not valid UTF-8")?;
@@ -74,7 +76,10 @@ impl Identity<Locked> {
         })
     }
 
-    pub fn create(name: &IdentityName) -> anyhow::Result<(Self, age::x25519::Recipient)> {
+    pub fn create(
+        name: &IdentityName,
+        passphrase: &dyn PassphraseSource,
+    ) -> anyhow::Result<(Self, age::x25519::Recipient)> {
         let identities_dir = storage::identities_dir()?;
         std::fs::create_dir_all(&identities_dir).context("failed to create ~/.m65/identities")?;
 
@@ -88,16 +93,18 @@ impl Identity<Locked> {
         let key = age::x25519::Identity::generate();
         let pubkey = key.to_public();
 
-        let passphrase =
-            rpassword::prompt_password("Passphrase: ").context("failed to read passphrase")?;
-        let confirm = rpassword::prompt_password("Confirm passphrase: ")
+        let pass = passphrase
+            .read("Passphrase: ")
+            .context("failed to read passphrase")?;
+        let conf = passphrase
+            .read("Confirm passphrase: ")
             .context("failed to read password confirmation")?;
-        if passphrase != confirm {
+        if pass != conf {
             anyhow::bail!("passphrases do not match");
         }
 
         let salt = crypto::random_salt();
-        let kek = crypto::derive_kek(passphrase.as_bytes(), &salt)?;
+        let kek = crypto::derive_kek(pass.as_bytes(), &salt)?;
 
         let key_str = key.to_string();
         let plaintext = key_str.expose_secret().as_bytes();
@@ -203,19 +210,29 @@ impl From<IdentityName> for String {
     }
 }
 
-pub fn dispatch(args: IdentityArgs, config: Option<Config>) -> anyhow::Result<()> {
+pub fn dispatch(
+    args: IdentityArgs,
+    config: Option<Config>,
+    passphrase: &dyn PassphraseSource,
+    confirm: &dyn Confirm,
+) -> anyhow::Result<()> {
     match args.command {
-        IdentityCommands::Init { name, set_default } => init(name, set_default, config),
+        IdentityCommands::Init { name, set_default } => init(name, set_default, config, passphrase),
         IdentityCommands::Default {} => default(config),
         IdentityCommands::SetDefault { name } => set_default(name, config),
         IdentityCommands::Show { name } => show(name),
         IdentityCommands::List {} => list(config),
-        IdentityCommands::Remove { name } => remove(name, config),
+        IdentityCommands::Remove { name } => remove(name, config, confirm),
     }
 }
 
-fn init(name: IdentityName, set_default: bool, config: Option<Config>) -> anyhow::Result<()> {
-    let (_identity, pubkey) = Identity::create(&name)?;
+fn init(
+    name: IdentityName,
+    set_default: bool,
+    config: Option<Config>,
+    passphrase: &dyn PassphraseSource,
+) -> anyhow::Result<()> {
+    let (_identity, pubkey) = Identity::create(&name, passphrase)?;
 
     match config {
         Some(mut c) => {
@@ -267,7 +284,7 @@ fn list(config: Option<Config>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: IdentityName, config: Option<Config>) -> anyhow::Result<()> {
+fn remove(name: IdentityName, config: Option<Config>, confirm: &dyn Confirm) -> anyhow::Result<()> {
     let c = Config::require(config)?;
     if c.default_identity == name.as_str() {
         anyhow::bail!(
@@ -276,11 +293,7 @@ fn remove(name: IdentityName, config: Option<Config>) -> anyhow::Result<()> {
         );
     }
 
-    print!("Type the identity name to confirm removal: ");
-    std::io::Write::flush(&mut std::io::stdout())?;
-    let mut input = String::new();
-    let _ = std::io::stdin().read_line(&mut input);
-    if input.trim() != name.as_str() {
+    if !confirm.confirm("Type the identity name to confirm removal: ", name.as_str())? {
         anyhow::bail!("name did not match; aborting");
     }
 

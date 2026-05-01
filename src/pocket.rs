@@ -2,6 +2,7 @@ use crate::cli::{PocketArgs, PocketCommands};
 use crate::config::Config;
 use crate::dek::Dek;
 use crate::identity::{Identity, IdentityName};
+use crate::io::{Confirm, PassphraseSource};
 use crate::keyring::Keyring;
 use crate::secret::Secret;
 use crate::session;
@@ -92,14 +93,18 @@ impl Pocket<Locked> {
         })
     }
 
-    pub fn unlock(self, config: &Config) -> anyhow::Result<Pocket<Unlocked>> {
+    pub fn unlock(
+        self,
+        config: &Config,
+        passphrase: &dyn PassphraseSource,
+    ) -> anyhow::Result<Pocket<Unlocked>> {
         let key = self.session_key()?;
         if let Some(dek) = session::try_resume(&key)? {
             return Ok(self.into_unlocked(dek));
         }
 
         let name: IdentityName = config.default_identity.parse()?;
-        let id = Identity::open(&name)?.unlock()?;
+        let id = Identity::open(&name)?.unlock(passphrase)?;
         let keyring = Keyring::load(self.dir())?;
         let dek = keyring.decrypt_dek(id.as_age())?;
         session::establish(&key, &dek, config)?;
@@ -169,11 +174,15 @@ impl AsRef<str> for PocketName {
     }
 }
 
-pub fn dispatch(args: PocketArgs, config: Option<Config>) -> anyhow::Result<()> {
+pub fn dispatch(
+    args: PocketArgs,
+    config: Option<Config>,
+    confirm: &dyn Confirm,
+) -> anyhow::Result<()> {
     match args.command {
         PocketCommands::Init { name } => init(name, config),
         PocketCommands::List {} => list(),
-        PocketCommands::Remove { name } => remove(name),
+        PocketCommands::Remove { name } => remove(name, confirm),
     }
 }
 
@@ -195,17 +204,14 @@ fn list() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: PocketName) -> anyhow::Result<()> {
+fn remove(name: PocketName, confirm: &dyn Confirm) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
     let pocket = Pocket::open(&name, &repo_root)?;
 
-    print!("Type the pocket name to confirm removal: ");
-    std::io::Write::flush(&mut std::io::stdout())?;
-    let mut input = String::new();
-    let _ = std::io::stdin().read_line(&mut input);
-    if input.trim() != name.as_str() {
+    if !confirm.confirm("Type the pocket name to confirm removal: ", name.as_str())? {
         anyhow::bail!("name did not match; aborting");
     }
+
     pocket.delete()?;
     println!("removed pocket: {}", name);
     Ok(())
@@ -227,9 +233,13 @@ pub fn lock(pocket: Option<PocketName>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn unlock(name: PocketName, config: &Config) -> anyhow::Result<()> {
+pub fn unlock(
+    name: PocketName,
+    config: &Config,
+    passphrase: &dyn PassphraseSource,
+) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
-    Pocket::open(&name, &repo_root)?.unlock(config)?;
+    Pocket::open(&name, &repo_root)?.unlock(config, passphrase)?;
     println!("unlocked: {}", name);
     Ok(())
 }

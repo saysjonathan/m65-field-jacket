@@ -1,6 +1,7 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
 use crate::crypto;
+use crate::io::PassphraseSource;
 use crate::pocket::{Pocket, PocketName, Unlocked};
 use crate::stanza::read_stanzas;
 use crate::storage;
@@ -229,9 +230,14 @@ pub fn list(pocket: PocketName) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn get(pocket: PocketName, name: String, config: &Config) -> anyhow::Result<()> {
+pub fn get(
+    pocket: PocketName,
+    name: String,
+    config: &Config,
+    passphrase: &dyn PassphraseSource,
+) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
-    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config, passphrase)?;
     let secret = pocket.secret(&name)?;
     let plaintext = secret.decrypt(&pocket)?;
     println!("{}", String::from_utf8(plaintext)?);
@@ -244,24 +250,34 @@ pub fn remove(pocket: PocketName, name: String) -> anyhow::Result<()> {
     pocket.secret(&name)?.delete()
 }
 
-pub fn set(args: SetArgs, config: &Config) -> anyhow::Result<()> {
+pub fn set(
+    args: SetArgs,
+    config: &Config,
+    passphrase: &dyn PassphraseSource,
+) -> anyhow::Result<()> {
     match args.command {
         SetCommands::Env {
             pocket,
             name,
             value,
-        } => env(pocket, name, value, config),
+        } => env(pocket, name, value, config, passphrase),
         SetCommands::File {
             pocket,
             source,
             target,
-        } => file(pocket, source, target, config),
+        } => file(pocket, source, target, config, passphrase),
     }
 }
 
-fn env(pocket: PocketName, name: String, value: String, config: &Config) -> anyhow::Result<()> {
+fn env(
+    pocket: PocketName,
+    name: String,
+    value: String,
+    config: &Config,
+    passphrase: &dyn PassphraseSource,
+) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
-    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config, passphrase)?;
     Secret::create_env(&pocket, &name, value.as_bytes())?;
     Ok(())
 }
@@ -271,9 +287,10 @@ fn file(
     source: String,
     target: Option<String>,
     config: &Config,
+    passphrase: &dyn PassphraseSource,
 ) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
-    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config)?;
+    let pocket = Pocket::open(&pocket, &repo_root)?.unlock(config, passphrase)?;
     Secret::create_file(&pocket, Path::new(&source), target.as_deref())?;
     Ok(())
 }
