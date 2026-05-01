@@ -1,15 +1,11 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::config::Config;
+use crate::crypto;
 use crate::pocket::{Pocket, PocketName, Unlocked};
 use crate::stanza::read_stanzas;
 use age_core::format::Stanza;
 use anyhow::Context;
-use chacha20poly1305::aead::{Aead, KeyInit};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use rand::prelude::*;
 use std::path::{Path, PathBuf};
-
-const NONCE_LENGTH: usize = 12;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SecretKind {
@@ -92,13 +88,10 @@ fn encrypt_and_write(
     header: &str,
     plaintext: &[u8],
 ) -> anyhow::Result<Vec<u8>> {
-    let mut nonce_bytes = [0u8; NONCE_LENGTH];
-    rand::rng().fill_bytes(&mut nonce_bytes);
-    let ct = ChaCha20Poly1305::new(Key::from_slice(pocket.dek().expose()))
-        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
-        .map_err(|e| anyhow::anyhow!("encryption failed: {e}"))?;
+    let nonce_bytes = crypto::random_nonce();
+    let ct = crypto::encrypt(pocket.dek().expose(), &nonce_bytes, plaintext)?;
 
-    let mut ciphertext = Vec::with_capacity(NONCE_LENGTH + ct.len());
+    let mut ciphertext = Vec::with_capacity(crypto::NONCE_LEN + ct.len());
     ciphertext.extend_from_slice(&nonce_bytes);
     ciphertext.extend_from_slice(&ct);
 
@@ -138,10 +131,11 @@ impl Secret {
     }
 
     pub fn decrypt(&self, pocket: &Pocket<Unlocked>) -> anyhow::Result<Vec<u8>> {
-        let (nonce, ciphertext) = self.ciphertext.split_at(NONCE_LENGTH);
-        ChaCha20Poly1305::new(Key::from_slice(pocket.dek().expose()))
-            .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| anyhow::anyhow!("decryption failed: wrong key or corrupted data"))
+        let (nonce, ciphertext) = self
+            .ciphertext
+            .split_first_chunk::<{ crypto::NONCE_LEN }>()
+            .ok_or_else(|| anyhow::anyhow!("malformed secret ciphertext"))?;
+        Ok(crypto::decrypt(pocket.dek().expose(), nonce, ciphertext)?)
     }
 
     pub fn delete(self) -> anyhow::Result<()> {

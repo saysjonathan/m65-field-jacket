@@ -1,10 +1,7 @@
 use crate::cli::{IdentityArgs, IdentityCommands};
 use crate::config::{Config, m65_home};
+use crate::crypto;
 use anyhow::Context;
-use argon2::Argon2;
-use chacha20poly1305::aead::{Aead, KeyInit};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use rand::prelude::*;
 use secrecy::ExposeSecret;
 use std::path::PathBuf;
 
@@ -55,22 +52,20 @@ impl Identity<Locked> {
         let path = identities_dir()?.join(self.name.as_str());
         let blob =
             std::fs::read(&path).with_context(|| format!("identity not found: {}", self.name()))?;
-        let salt = &blob[0..16];
-        let nonce = &blob[16..28];
-        let ciphertext = &blob[28..];
+
+        let (salt, rest) = blob
+            .split_first_chunk::<{ crypto::SALT_LEN }>()
+            .ok_or_else(|| anyhow::anyhow!("malformed identity blob: salt"))?;
+
+        let (nonce, ciphertext) = rest
+            .split_first_chunk::<{ crypto::NONCE_LEN }>()
+            .ok_or_else(|| anyhow::anyhow!("malformed identity blob: nonce"))?;
 
         let passphrase =
             rpassword::prompt_password("Passphrase: ").context("failed to read passphrase")?;
 
-        let mut hashkey = [0u8; 32];
-        Argon2::default()
-            .hash_password_into(passphrase.as_bytes(), &salt, &mut hashkey)
-            .map_err(|e| anyhow::anyhow!("argon2 error: {e}"))?;
-
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
-        let plaintext = cipher
-            .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| anyhow::anyhow!("decryption failed (wrong passphrase?)"))?;
+        let kek = crypto::derive_kek(passphrase.as_bytes(), salt)?;
+        let plaintext = crypto::decrypt(kek.expose_secret(), nonce, ciphertext)?;
 
         let key_str = std::str::from_utf8(&plaintext).context("decrypted key not valid UTF-8")?;
         let inner = key_str
@@ -105,24 +100,16 @@ impl Identity<Locked> {
             anyhow::bail!("passphrases do not match");
         }
 
-        let mut salt = [0u8; 16];
-        rand::rng().fill_bytes(&mut salt);
-
-        let mut hashkey = [0u8; 32];
-        Argon2::default()
-            .hash_password_into(passphrase.as_bytes(), &salt, &mut hashkey)
-            .map_err(|e| anyhow::anyhow!("argon2 error: {e}"))?;
+        let salt = crypto::random_salt();
+        let kek = crypto::derive_kek(passphrase.as_bytes(), &salt)?;
 
         let key_str = key.to_string();
         let plaintext = key_str.expose_secret().as_bytes();
 
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&hashkey));
-        let nonce_bytes: [u8; 12] = rand::rng().random();
-        let ciphertext = cipher
-            .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
-            .map_err(|e| anyhow::anyhow!("encryption failed: {e}"))?;
+        let nonce_bytes = crypto::random_nonce();
+        let ciphertext = crypto::encrypt(kek.expose_secret(), &nonce_bytes, plaintext)?;
 
-        let mut blob = Vec::new();
+        let mut blob = Vec::with_capacity(crypto::SALT_LEN + crypto::NONCE_LEN + ciphertext.len());
         blob.extend_from_slice(&salt);
         blob.extend_from_slice(&nonce_bytes);
         blob.extend_from_slice(&ciphertext);

@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod crypto;
 mod dek;
 mod error;
 mod identity;
