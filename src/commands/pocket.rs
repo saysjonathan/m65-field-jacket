@@ -1,25 +1,21 @@
 use crate::cli::{PocketArgs, PocketCommands};
+use crate::commands::Ctx;
 use crate::config::Config;
 use crate::domain::identity::{Identity, IdentityName};
 use crate::domain::pocket::{Pocket, PocketName};
-use crate::io::{Confirm, PassphraseSource};
 use crate::session;
 use crate::storage;
 
-pub fn dispatch(
-    args: PocketArgs,
-    config: Option<Config>,
-    confirm: &dyn Confirm,
-) -> anyhow::Result<()> {
+pub fn dispatch(args: PocketArgs, ctx: &Ctx) -> anyhow::Result<()> {
     match args.command {
-        PocketCommands::Init { name } => init(name, config),
+        PocketCommands::Init { name } => init(name, ctx),
         PocketCommands::List {} => list(),
-        PocketCommands::Remove { name } => remove(name, confirm),
+        PocketCommands::Remove { name } => remove(name, ctx),
     }
 }
 
-fn init(name: PocketName, config: Option<Config>) -> anyhow::Result<()> {
-    let c = Config::require(config)?;
+fn init(name: PocketName, ctx: &Ctx) -> anyhow::Result<()> {
+    let c = Config::require(&ctx.config)?;
     let id: IdentityName = c.default_identity.parse()?;
     let recipient = Identity::open(&id)?.recipient()?;
     let repo_root = storage::init_repo_root()?;
@@ -36,11 +32,14 @@ fn list() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(name: PocketName, confirm: &dyn Confirm) -> anyhow::Result<()> {
+fn remove(name: PocketName, ctx: &Ctx) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
     let pocket = Pocket::open(&name, &repo_root)?;
 
-    if !confirm.confirm("Type the pocket name to confirm removal: ", name.as_str())? {
+    if !ctx
+        .confirm
+        .confirm("Type the pocket name to confirm removal: ", name.as_str())?
+    {
         anyhow::bail!("name did not match; aborting");
     }
 
@@ -65,13 +64,9 @@ pub fn lock(pocket: Option<PocketName>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn unlock(
-    name: PocketName,
-    config: &Config,
-    passphrase: &dyn PassphraseSource,
-) -> anyhow::Result<()> {
+pub fn unlock(name: PocketName, ctx: &Ctx) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
-    Pocket::open(&name, &repo_root)?.unlock(config, passphrase)?;
+    Pocket::open(&name, &repo_root)?.unlock(Config::require(&ctx.config)?, &*ctx.passphrase)?;
     println!("unlocked: {}", name);
     Ok(())
 }

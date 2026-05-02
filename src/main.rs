@@ -21,23 +21,28 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
-    let config = config::Config::load()?;
-    let passphrase = io::TtyPrompt;
-    let confirm = io::TtyConfirm;
+    let ctx = commands::Ctx {
+        config: config::Config::load()?,
+        passphrase: Box::new(io::TtyPrompt),
+        confirm: Box::new(io::TtyConfirm),
+    };
 
     match cli.command {
-        Identity(args) => commands::identity::dispatch(args, config, &passphrase, &confirm)?,
-        Pocket(args) => commands::pocket::dispatch(args, config, &confirm)?,
-        Get { pocket, name } => {
-            commands::secret::get(pocket, name, &config::Config::require(config)?, &passphrase)?
-        }
+        // Identity commands
+        Identity(args) => commands::identity::dispatch(args, &ctx)?,
+
+        // Pocket commands
+        Pocket(args) => commands::pocket::dispatch(args, &ctx)?,
+
+        // Secret commands
+        Get { pocket, name } => commands::secret::get(pocket, name, &ctx)?,
         Remove { pocket, name } => commands::secret::remove(pocket, name)?,
-        Set(args) => commands::secret::set(args, &config::Config::require(config)?, &passphrase)?,
+        Set(args) => commands::secret::set(args, &ctx)?,
         List { pocket } => commands::secret::list(pocket)?,
+
+        // Session commands
         Lock { pocket } => commands::pocket::lock(pocket)?,
-        Unlock { pocket } => {
-            commands::pocket::unlock(pocket, &config::Config::require(config)?, &passphrase)?
-        }
+        Unlock { pocket } => commands::pocket::unlock(pocket, &ctx)?,
     }
 
     Ok(())

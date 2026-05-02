@@ -9,7 +9,7 @@ fn default_ttl() -> u64 {
     DEFAULT_SESSION_TTL
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     pub default_identity: String,
     #[serde(default = "default_ttl")]
@@ -24,8 +24,8 @@ impl Config {
         }
     }
 
-    pub fn require(config: Option<Self>) -> anyhow::Result<Self> {
-        config.ok_or_else(|| {
+    pub fn require(config: &Option<Self>) -> anyhow::Result<&Self> {
+        config.as_ref().ok_or_else(|| {
             anyhow::anyhow!("no identity initialized. Run `mfj identity init` to create one")
         })
     }
