@@ -1,4 +1,5 @@
 use crate::crypto;
+use crate::domain::name::{EnvSecretName, FileSecretName};
 use crate::domain::pocket::{Pocket, Unlocked};
 use crate::domain::stanza::read_stanzas;
 use crate::storage;
@@ -147,6 +148,17 @@ impl Secret {
         kind: SecretKind,
         plaintext: &[u8],
     ) -> anyhow::Result<Self> {
+        let path = storage::secret(pocket.dir(), name);
+        if path.exists() {
+            let existing = Secret::read(&path)?;
+            if std::mem::discriminant(&existing.meta.kind) != std::mem::discriminant(&kind) {
+                anyhow::bail!(
+                    "secret {name} already exists as {} kind",
+                    existing.meta.kind
+                );
+            }
+        }
+
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
@@ -160,7 +172,6 @@ impl Secret {
             kind.header_lines(),
         );
 
-        let path = storage::secret(pocket.dir(), name);
         let ciphertext = encrypt_and_write(pocket, &path, &header, plaintext)?;
 
         Ok(Self {
@@ -174,25 +185,32 @@ impl Secret {
         })
     }
 
-    pub fn create_env(pocket: &Pocket<Unlocked>, name: &str, value: &[u8]) -> anyhow::Result<Self> {
-        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-            || name.starts_with(|c: char| c.is_ascii_digit())
-        {
-            anyhow::bail!("secret name must match [a-zA-Z_][a-zA-Z0-9_]*");
-        }
-
-        Self::create(pocket, name, SecretKind::Env, value)
+    pub fn create_env(
+        pocket: &Pocket<Unlocked>,
+        name: &EnvSecretName,
+        value: &[u8],
+    ) -> anyhow::Result<Self> {
+        Self::create(pocket, name.as_str(), SecretKind::Env, value)
     }
 
     pub fn create_file(
         pocket: &Pocket<Unlocked>,
         source: &Path,
         target: Option<&str>,
+        name: Option<&FileSecretName>,
     ) -> anyhow::Result<Self> {
-        let name = source
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow::anyhow!("invalid source path: {}", source.display()))?;
+        let resolved: FileSecretName = match name {
+            Some(n) => n.clone(),
+            None => {
+                let raw = source
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| anyhow::anyhow!("invalid source path: {}", source.display()))?;
+                raw.parse().with_context(|| {
+                    format!("derived name '{raw}' invalid; provide --name to override")
+                })?
+            }
+        };
 
         let target_str: String = target
             .map(String::from)
@@ -203,7 +221,7 @@ impl Secret {
 
         Self::create(
             pocket,
-            name,
+            resolved.as_str(),
             SecretKind::File { target: target_str },
             &contents,
         )

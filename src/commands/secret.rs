@@ -1,7 +1,8 @@
 use crate::cli::{SetArgs, SetCommands};
 use crate::commands::Ctx;
 use crate::config::Config;
-use crate::domain::pocket::{Pocket, PocketName};
+use crate::domain::name::{EnvSecretName, FileSecretName, PocketName};
+use crate::domain::pocket::Pocket;
 use crate::domain::secret::{Secret, SecretKind};
 use crate::storage;
 use std::path::Path;
@@ -50,11 +51,12 @@ pub fn set(args: SetArgs, ctx: &Ctx) -> anyhow::Result<()> {
             pocket,
             source,
             target,
-        } => file(pocket, source, target, ctx),
+            name,
+        } => file(pocket, source, target, name, ctx),
     }
 }
 
-fn env(pocket: PocketName, name: String, value: String, ctx: &Ctx) -> anyhow::Result<()> {
+fn env(pocket: PocketName, name: EnvSecretName, value: String, ctx: &Ctx) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
     let pocket = Pocket::open(&pocket, &repo_root)?
         .unlock(Config::require(&ctx.config)?, &*ctx.passphrase)?;
@@ -66,11 +68,17 @@ fn file(
     pocket: PocketName,
     source: String,
     target: Option<String>,
+    name: Option<FileSecretName>,
     ctx: &Ctx,
 ) -> anyhow::Result<()> {
     let repo_root = storage::repo_root()?;
     let pocket = Pocket::open(&pocket, &repo_root)?
         .unlock(Config::require(&ctx.config)?, &*ctx.passphrase)?;
-    Secret::create_file(&pocket, Path::new(&source), target.as_deref())?;
+    Secret::create_file(
+        &pocket,
+        Path::new(&source),
+        target.as_deref(),
+        name.as_ref(),
+    )?;
     Ok(())
 }

@@ -1,7 +1,8 @@
 use crate::cli::{IdentityArgs, IdentityCommands};
 use crate::commands::Ctx;
 use crate::config::Config;
-use crate::domain::identity::{Identity, IdentityName};
+use crate::domain::identity::Identity;
+use crate::domain::name::IdentityName;
 
 pub fn dispatch(args: IdentityArgs, ctx: &Ctx) -> anyhow::Result<()> {
     match args.command {
@@ -20,12 +21,12 @@ fn init(name: IdentityName, set_default: bool, ctx: &Ctx) -> anyhow::Result<()> 
     match ctx.config.clone() {
         Some(mut c) => {
             if set_default {
-                c.default_identity = name.into();
+                c.default_identity = name.to_string();
                 c.save()?
             }
         }
         None => {
-            let c = Config::new(name.into());
+            let c = Config::new(name.to_string());
             c.save()?
         }
     }
@@ -43,7 +44,7 @@ fn default(ctx: &Ctx) -> anyhow::Result<()> {
 fn set_default(name: IdentityName, ctx: &Ctx) -> anyhow::Result<()> {
     let mut c = Config::require(&ctx.config)?.clone();
     Identity::open(&name)?;
-    c.default_identity = name.into();
+    c.default_identity = name.to_string();
     c.save()?;
     Ok(())
 }

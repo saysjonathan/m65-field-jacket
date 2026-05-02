@@ -1,8 +1,9 @@
 use crate::cli::{PocketArgs, PocketCommands};
 use crate::commands::Ctx;
 use crate::config::Config;
-use crate::domain::identity::{Identity, IdentityName};
-use crate::domain::pocket::{Pocket, PocketName};
+use crate::domain::identity::Identity;
+use crate::domain::name::{IdentityName, PocketName};
+use crate::domain::pocket::Pocket;
 use crate::session;
 use crate::storage;
 

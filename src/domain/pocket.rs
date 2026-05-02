@@ -1,7 +1,8 @@
 use crate::config::Config;
 use crate::domain::dek::Dek;
-use crate::domain::identity::{Identity, IdentityName};
+use crate::domain::identity::Identity;
 use crate::domain::keyring::Keyring;
+use crate::domain::name::{IdentityName, PocketName};
 use crate::domain::secret::Secret;
 use crate::io::PassphraseSource;
 use crate::session;
@@ -126,49 +127,5 @@ impl Pocket<Locked> {
 impl Pocket<Unlocked> {
     pub fn dek(&self) -> &Dek {
         &self.state.dek
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PocketName(String);
-
-impl PocketName {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::str::FromStr for PocketName {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> anyhow::Result<Self> {
-        if s.is_empty() {
-            anyhow::bail!("pocket name must not be empty");
-        }
-
-        if s.len() > 64 {
-            anyhow::bail!("pocket name must be <=64 chars");
-        }
-
-        if !s
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        {
-            anyhow::bail!("pocket name must be alphanumeric");
-        }
-
-        Ok(Self(s.to_owned()))
-    }
-}
-
-impl std::fmt::Display for PocketName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl AsRef<str> for PocketName {
-    fn as_ref(&self) -> &str {
-        &self.0
     }
 }

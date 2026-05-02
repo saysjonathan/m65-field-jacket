@@ -1,4 +1,4 @@
-use crate::domain::{identity::IdentityName, pocket::PocketName};
+use crate::domain::name::{EnvSecretName, FileSecretName, IdentityName, PocketName};
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -100,7 +100,7 @@ pub struct SetArgs {
 pub enum SetCommands {
     Env {
         pocket: PocketName,
-        name: String,
+        name: EnvSecretName,
         value: String,
     },
 
@@ -108,5 +108,7 @@ pub enum SetCommands {
         pocket: PocketName,
         source: String,
         target: Option<String>,
+        #[arg(short = 'n', long)]
+        name: Option<FileSecretName>,
     },
 }

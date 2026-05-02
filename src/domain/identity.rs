@@ -1,4 +1,5 @@
 use crate::crypto;
+use crate::domain::name::IdentityName;
 use crate::io::PassphraseSource;
 use crate::storage;
 use anyhow::Context;
@@ -156,54 +157,5 @@ impl Identity<Locked> {
 impl Identity<Unlocked> {
     pub fn as_age(&self) -> &dyn age::Identity {
         &self.state.inner
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct IdentityName(String);
-
-impl IdentityName {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::str::FromStr for IdentityName {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> anyhow::Result<Self> {
-        if s.is_empty() {
-            anyhow::bail!("identity name must not be empty");
-        }
-
-        if s.len() > 64 {
-            anyhow::bail!("identity name must be <= 64 chars");
-        }
-
-        if !s
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            anyhow::bail!("identity name must be alphanumeric, hyphen, or underscore");
-        }
-        Ok(Self(s.to_owned()))
-    }
-}
-
-impl AsRef<str> for IdentityName {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for IdentityName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl From<IdentityName> for String {
-    fn from(value: IdentityName) -> Self {
-        value.0
     }
 }
