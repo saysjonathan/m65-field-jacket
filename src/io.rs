@@ -1,4 +1,4 @@
-use crate::Result;
+use anyhow::Result;
 use std::io::Write;
 
 pub trait PassphraseSource {

@@ -3,14 +3,13 @@ mod commands;
 mod config;
 mod crypto;
 mod domain;
-mod error;
 mod io;
 mod session;
 mod storage;
 
 use crate::cli::Commands::{Get, Identity, List, Lock, Pocket, Remove, Set, Unlock};
+use anyhow::Result;
 use clap::Parser;
-pub use error::{Error, Result};
 
 fn main() {
     if let Err(e) = run() {
@@ -19,7 +18,7 @@ fn main() {
     }
 }
 
-fn run() -> anyhow::Result<()> {
+fn run() -> Result<()> {
     let cli = cli::Cli::parse();
     let ctx = commands::Ctx {
         config: config::Config::load()?,

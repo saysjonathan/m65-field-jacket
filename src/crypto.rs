@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use anyhow::{Result, anyhow};
 use argon2::Argon2;
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
@@ -14,13 +14,13 @@ pub const SALT_LEN: usize = 16;
 pub fn encrypt(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], plaintext: &[u8]) -> Result<Vec<u8>> {
     ChaCha20Poly1305::new(Key::from_slice(key))
         .encrypt(Nonce::from_slice(nonce), plaintext)
-        .map_err(|_| Error::Msg("encryption failed: wrong key or corrupted data".to_owned()))
+        .map_err(|_| anyhow!("encryption failed: wrong key or corrupted data"))
 }
 
 pub fn decrypt(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], ciphertext: &[u8]) -> Result<Vec<u8>> {
     ChaCha20Poly1305::new(Key::from_slice(key))
         .decrypt(Nonce::from_slice(nonce), ciphertext)
-        .map_err(|_| Error::Msg("decryption failed: wrong key or corrupted data".to_owned()))
+        .map_err(|_| anyhow!("decryption failed: wrong key or corrupted data"))
 }
 
 pub fn random_nonce() -> [u8; NONCE_LEN] {
@@ -39,6 +39,6 @@ pub fn derive_kek(passphrase: &[u8], salt: &[u8; SALT_LEN]) -> Result<SecretBox<
     let mut bytes = [0u8; KEY_LEN];
     Argon2::default()
         .hash_password_into(passphrase, salt, &mut bytes)
-        .map_err(|e| Error::Msg(format!("argon2 error: {e}")))?;
+        .map_err(|e| anyhow!(format!("argon2 error: {e}")))?;
     Ok(SecretBox::new(Box::new(bytes)))
 }

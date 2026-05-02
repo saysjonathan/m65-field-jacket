@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 
 const M65_DIR: &str = ".m65";
@@ -6,7 +6,7 @@ const M65_DIR: &str = ".m65";
 // Roots
 
 pub fn user_home() -> Result<PathBuf> {
-    let home = std::env::var("HOME").map_err(|_| Error::Msg("HOME env var not set".into()))?;
+    let home = std::env::var("HOME").map_err(|_| anyhow!("HOME env var not set"))?;
     Ok(PathBuf::from(home))
 }
 
@@ -17,11 +17,11 @@ pub fn repo_root() -> Result<PathBuf> {
 
     loop {
         if p == home {
-            return Err(Error::Msg(format!(
+            bail!(format!(
                 "no .m65 directory found from {} up to $HOME ({})",
                 cwd.display(),
                 home.display()
-            )));
+            ));
         }
 
         if p.join(M65_DIR).is_dir() {
@@ -29,18 +29,16 @@ pub fn repo_root() -> Result<PathBuf> {
         }
 
         if p.join(".git").exists() {
-            return Err(Error::Msg(format!(
+            bail!(format!(
                 "no .m65 directory found in this repo (searched up to {})",
                 p.display()
-            )));
+            ));
         }
 
         match p.parent() {
             Some(parent) => p = parent,
             None => {
-                return Err(Error::Msg(
-                    "no pocket directory found from cwd up to filesystem root".into(),
-                ));
+                bail!("no pocket directory found from cwd up to filesystem root",);
             }
         }
     }
