@@ -1,15 +1,11 @@
 mod cli;
+mod commands;
 mod config;
 mod crypto;
-mod dek;
+mod domain;
 mod error;
-mod identity;
 mod io;
-mod keyring;
-mod pocket;
-mod secret;
 mod session;
-mod stanza;
 mod storage;
 
 use crate::cli::Commands::{Get, Identity, List, Lock, Pocket, Remove, Set, Unlock};
@@ -30,17 +26,17 @@ fn run() -> anyhow::Result<()> {
     let confirm = io::TtyConfirm;
 
     match cli.command {
-        Identity(args) => identity::dispatch(args, config, &passphrase, &confirm)?,
-        Pocket(args) => pocket::dispatch(args, config, &confirm)?,
+        Identity(args) => commands::identity::dispatch(args, config, &passphrase, &confirm)?,
+        Pocket(args) => commands::pocket::dispatch(args, config, &confirm)?,
         Get { pocket, name } => {
-            secret::get(pocket, name, &config::Config::require(config)?, &passphrase)?
+            commands::secret::get(pocket, name, &config::Config::require(config)?, &passphrase)?
         }
-        Remove { pocket, name } => secret::remove(pocket, name)?,
-        Set(args) => secret::set(args, &config::Config::require(config)?, &passphrase)?,
-        List { pocket } => secret::list(pocket)?,
-        Lock { pocket } => pocket::lock(pocket)?,
+        Remove { pocket, name } => commands::secret::remove(pocket, name)?,
+        Set(args) => commands::secret::set(args, &config::Config::require(config)?, &passphrase)?,
+        List { pocket } => commands::secret::list(pocket)?,
+        Lock { pocket } => commands::pocket::lock(pocket)?,
         Unlock { pocket } => {
-            pocket::unlock(pocket, &config::Config::require(config)?, &passphrase)?
+            commands::pocket::unlock(pocket, &config::Config::require(config)?, &passphrase)?
         }
     }
 

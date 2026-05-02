@@ -1,6 +1,6 @@
 mod store;
 use crate::config::Config;
-use crate::dek::Dek;
+use crate::domain::dek::Dek;
 use store::SessionRecord;
 
 pub fn try_resume(pocket_key: &str) -> anyhow::Result<Option<Dek>> {

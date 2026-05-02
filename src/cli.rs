@@ -1,5 +1,4 @@
-use crate::identity::IdentityName;
-use crate::pocket::PocketName;
+use crate::domain::{identity::IdentityName, pocket::PocketName};
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]

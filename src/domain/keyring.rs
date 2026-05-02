@@ -1,5 +1,5 @@
-use crate::dek::Dek;
-use crate::stanza::MfjMetadata;
+use crate::domain::dek::Dek;
+use crate::domain::stanza::MfjMetadata;
 use crate::storage;
 use age_core::format::Stanza;
 use anyhow::Context;

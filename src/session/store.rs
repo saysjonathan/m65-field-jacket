@@ -1,4 +1,4 @@
-use crate::dek::Dek;
+use crate::domain::dek::Dek;
 use crate::storage;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
