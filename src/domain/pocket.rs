@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::domain::dek::Dek;
 use crate::domain::identity::Identity;
 use crate::domain::keyring::Keyring;
-use crate::domain::name::{IdentityName, PocketName};
+use crate::domain::name::PocketName;
 use crate::domain::secret::Secret;
 use crate::io::PassphraseSource;
 use crate::session;
@@ -103,8 +103,7 @@ impl Pocket<Locked> {
             return Ok(self.into_unlocked(dek));
         }
 
-        let name: IdentityName = config.default_identity.parse()?;
-        let id = Identity::open(&name)?.unlock(passphrase)?;
+        let id = Identity::open(&config.default_identity)?.unlock(passphrase)?;
         let keyring = Keyring::load(self.dir())?;
         let dek = keyring.decrypt_dek(id.as_age())?;
         session::establish(&key, &dek, config)?;

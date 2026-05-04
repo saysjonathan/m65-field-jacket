@@ -2,7 +2,7 @@ use crate::cli::{PocketArgs, PocketCommands};
 use crate::commands::Ctx;
 use crate::config::Config;
 use crate::domain::identity::Identity;
-use crate::domain::name::{IdentityName, PocketName};
+use crate::domain::name::PocketName;
 use crate::domain::pocket::Pocket;
 use crate::session;
 use crate::storage;
@@ -17,8 +17,7 @@ pub fn dispatch(args: PocketArgs, ctx: &Ctx) -> anyhow::Result<()> {
 
 fn init(name: PocketName, ctx: &Ctx) -> anyhow::Result<()> {
     let c = Config::require(&ctx.config)?;
-    let id: IdentityName = c.default_identity.parse()?;
-    let recipient = Identity::open(&id)?.recipient()?;
+    let recipient = Identity::open(&c.default_identity)?.recipient()?;
     let repo_root = storage::init_repo_root()?;
     Pocket::create(&name, &recipient, &repo_root)?;
     Ok(())

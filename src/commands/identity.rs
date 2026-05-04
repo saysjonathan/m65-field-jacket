@@ -21,12 +21,12 @@ fn init(name: IdentityName, set_default: bool, ctx: &Ctx) -> anyhow::Result<()> 
     match ctx.config.clone() {
         Some(mut c) => {
             if set_default {
-                c.default_identity = name.to_string();
+                c.default_identity = name;
                 c.save()?
             }
         }
         None => {
-            let c = Config::new(name.to_string());
+            let c = Config::new(name);
             c.save()?
         }
     }
@@ -44,7 +44,7 @@ fn default(ctx: &Ctx) -> anyhow::Result<()> {
 fn set_default(name: IdentityName, ctx: &Ctx) -> anyhow::Result<()> {
     let mut c = Config::require(&ctx.config)?.clone();
     Identity::open(&name)?;
-    c.default_identity = name.to_string();
+    c.default_identity = name;
     c.save()?;
     Ok(())
 }
@@ -57,7 +57,7 @@ fn show(name: IdentityName) -> anyhow::Result<()> {
 fn list(ctx: &Ctx) -> anyhow::Result<()> {
     let c = Config::require(&ctx.config)?;
     for identity in Identity::list()? {
-        let marker = if c.default_identity == identity.name().as_str() {
+        let marker = if &c.default_identity == identity.name() {
             "* "
         } else {
             "  "
@@ -70,7 +70,7 @@ fn list(ctx: &Ctx) -> anyhow::Result<()> {
 
 fn remove(name: IdentityName, ctx: &Ctx) -> anyhow::Result<()> {
     let c = Config::require(&ctx.config)?;
-    if c.default_identity == name.as_str() {
+    if c.default_identity == name {
         anyhow::bail!(
             "cannot remove default identity '{}'; set a different default first",
             name

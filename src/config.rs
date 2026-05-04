@@ -1,3 +1,4 @@
+use crate::domain::name::IdentityName;
 use crate::storage;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -11,13 +12,13 @@ fn default_ttl() -> u64 {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
-    pub default_identity: String,
+    pub default_identity: IdentityName,
     #[serde(default = "default_ttl")]
     pub session_ttl_seconds: u64,
 }
 
 impl Config {
-    pub fn new(default_identity: String) -> Self {
+    pub fn new(default_identity: IdentityName) -> Self {
         Self {
             default_identity,
             session_ttl_seconds: DEFAULT_SESSION_TTL,
