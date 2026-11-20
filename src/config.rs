@@ -48,6 +48,6 @@ impl Config {
     }
 
     pub fn path() -> anyhow::Result<PathBuf> {
-        Ok(storage::config()?)
+        storage::config()
     }
 }

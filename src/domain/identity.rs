@@ -117,7 +117,7 @@ impl Identity<Locked> {
         blob.extend_from_slice(&ciphertext);
 
         std::fs::write(&identity_path, &blob)?;
-        std::fs::write(&pub_path, &pubkey.to_string())?;
+        std::fs::write(&pub_path, pubkey.to_string())?;
 
         Ok((
             Self {
@@ -135,13 +135,13 @@ impl Identity<Locked> {
             if path.extension().and_then(|e| e.to_str()) != Some("pub") {
                 continue;
             }
-            if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                if let Ok(name) = name.parse::<IdentityName>() {
-                    out.push(Self {
-                        name: name.to_owned(),
-                        state: Locked,
-                    });
-                }
+            if let Some(name) = path.file_stem().and_then(|s| s.to_str())
+                && let Ok(name) = name.parse::<IdentityName>()
+            {
+                out.push(Self {
+                    name: name.to_owned(),
+                    state: Locked,
+                });
             }
         }
         Ok(out)

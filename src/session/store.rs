@@ -39,7 +39,7 @@ impl SessionRecord {
     }
 
     pub fn path() -> anyhow::Result<PathBuf> {
-        Ok(storage::session()?)
+        storage::session()
     }
 
     pub fn get(&self, key: &str) -> Option<Dek> {
@@ -72,7 +72,7 @@ impl SessionRecord {
         let path = Self::path()?;
         if path.exists() {
             std::fs::remove_file(&path)
-                .with_context(|| format!("failed to remove session: {}", &path.display()))?;
+                .with_context(|| format!("failed to remove session: {}", path.display()))?;
         }
         Ok(())
     }

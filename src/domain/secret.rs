@@ -135,7 +135,7 @@ impl Secret {
             .ciphertext
             .split_first_chunk::<{ crypto::NONCE_LEN }>()
             .ok_or_else(|| anyhow::anyhow!("malformed secret ciphertext"))?;
-        Ok(crypto::decrypt(pocket.dek().expose(), nonce, ciphertext)?)
+        crypto::decrypt(pocket.dek().expose(), nonce, ciphertext)
     }
 
     pub fn delete(self) -> anyhow::Result<()> {
@@ -216,7 +216,7 @@ impl Secret {
             .map(String::from)
             .unwrap_or_else(|| source.to_string_lossy().into_owned());
 
-        let contents = std::fs::read(&source)
+        let contents = std::fs::read(source)
             .with_context(|| format!("source file does not exist: {}", source.display()))?;
 
         Self::create(

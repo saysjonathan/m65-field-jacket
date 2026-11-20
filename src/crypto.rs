@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use argon2::Argon2;
 use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
+    ChaCha20Poly1305,
     aead::{Aead, KeyInit},
 };
 use rand::prelude::*;
@@ -12,14 +12,14 @@ pub const NONCE_LEN: usize = 12;
 pub const SALT_LEN: usize = 16;
 
 pub fn encrypt(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], plaintext: &[u8]) -> Result<Vec<u8>> {
-    ChaCha20Poly1305::new(Key::from_slice(key))
-        .encrypt(Nonce::from_slice(nonce), plaintext)
+    ChaCha20Poly1305::new(key.into())
+        .encrypt(nonce.into(), plaintext)
         .map_err(|_| anyhow!("encryption failed: wrong key or corrupted data"))
 }
 
 pub fn decrypt(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], ciphertext: &[u8]) -> Result<Vec<u8>> {
-    ChaCha20Poly1305::new(Key::from_slice(key))
-        .decrypt(Nonce::from_slice(nonce), ciphertext)
+    ChaCha20Poly1305::new(key.into())
+        .decrypt(nonce.into(), ciphertext)
         .map_err(|_| anyhow!("decryption failed: wrong key or corrupted data"))
 }
 
